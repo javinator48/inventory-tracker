@@ -22,6 +22,13 @@
       "when": 1790578346416,
       "tag": "0002_wishlist_and_joy",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1790580818129,
+      "tag": "0003_outfits",
+      "breakpoints": true
     }
   ]
 }

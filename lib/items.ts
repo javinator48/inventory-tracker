@@ -73,8 +73,9 @@ export async function listItems(opts: { status?: ItemStatus; query?: string; cat
   const conditions = [];
   if (opts.status) conditions.push(eq(items.status, opts.status));
   if (opts.category) conditions.push(eq(sql`lower(${items.category})`, opts.category.toLowerCase()));
-  if (opts.query) {
-    const q = `%${opts.query}%`;
+  // Every word must appear somewhere, so "white sneakers" finds "White leather sneakers".
+  for (const word of opts.query?.split(/\s+/).filter(Boolean) ?? []) {
+    const q = `%${word}%`;
     conditions.push(
       or(
         like(items.name, q),

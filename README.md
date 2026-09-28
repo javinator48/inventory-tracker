@@ -17,6 +17,7 @@ A self-hosted web app for keeping track of everything you own, what you're selli
 
 - **Owned, For sale, Sold and Wishlist tabs**, with search and a category filter. Move an item from Owned to For sale to Sold, recording its asking price and then its sale price, date and platform. Sell some units of an item and keep the rest.
 - **Before you buy:** check a possible purchase against everything you own, using ideas from Marie Kondo's KonMari method. See the [example below](#before-you-buy-an-example).
+- **Try it on:** add photos or names of clothes you're thinking of buying. Claude pairs them with clothes you own, points out near-duplicates, and (with a Gemini API key) shows an image of you wearing each outfit, made from a saved photo of you. The chat assistant does the same when you attach photos.
 - **Does it spark joy?** Rate what you own as sparking joy, neutral, or not. The ratings feed the "Before you buy" check, and the Stats tab lists items you might let go.
 - **Barcode scanning** with the phone camera. Lookups use [UPCitemdb](https://www.upcitemdb.com/) for the name, description, MSRP and images. If a barcode isn't there, the app falls back to a Claude web search.
 - **Snap a photo and identify:** Claude recognizes the product, then searches the web for its MSRP, typical used price, and product images.
@@ -91,6 +92,8 @@ The database (`data/inventory.db`) and uploaded photos (`data/uploads/`) are cre
 | Variable | Purpose |
 |---|---|
 | `ANTHROPIC_API_KEY` | Enables photo identification, the barcode fallback, value estimates and chat |
+| `GEMINI_API_KEY` | Optional. Enables "Try it on" images of you wearing an outfit; Claude can't generate images, so [Gemini](https://aistudio.google.com/apikey) draws them. Outfit suggestions work without it. |
+| `GEMINI_IMAGE_MODEL` | Optional. The Gemini image model, `gemini-3.1-flash-image` by default |
 | `DATABASE_URL` | Defaults to `file:./data/inventory.db`. Use `libsql://…` for Turso. |
 | `DATABASE_AUTH_TOKEN` | Only needed for a remote libSQL database or Turso |
 | `UPLOAD_DIR` | Where photos are stored. Defaults to `./data/uploads`. |
@@ -128,6 +131,7 @@ Each item counts at its **estimated value**, falling back to its **MSRP** and th
 | `lib/ai/identify.ts` | Product identification and value estimates (Claude with web search) |
 | `lib/ai/assistant.ts` | The chat assistant: inventory tools, photos, edit proposals, purchase checks and web search |
 | `lib/ai/buy-check.ts`, `lib/ai/konmari.ts` | The "Before you buy" check and the KonMari guidance it uses |
+| `lib/ai/outfits.ts`, `lib/ai/gemini.ts` | Outfit pairings (Claude) and try-on images (Gemini) |
 | `lib/images.ts` | Checks that suggested image URLs actually load |
 | `proxy.ts` | The optional password gate |
 

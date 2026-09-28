@@ -64,7 +64,15 @@ export const chatMessages = sqliteTable("chat_messages", {
   content: text("content").notNull(),
   /** Edit cards the assistant showed with this reply, so they survive a reload. */
   proposals: text("proposals", { mode: "json" }).$type<ItemProposal[]>(),
+  /** Storage keys: photos the user attached, or try-on images the assistant made. */
+  images: text("images", { mode: "json" }).$type<string[]>(),
   createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
+});
+
+/** App-wide key/value settings, e.g. the user's saved photo for try-ons. */
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
 });
 
 export type Item = typeof items.$inferSelect;
