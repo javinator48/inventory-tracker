@@ -15,6 +15,13 @@
       "when": 1790575989471,
       "tag": "0001_chat_proposals",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1790578346416,
+      "tag": "0002_wishlist_and_joy",
+      "breakpoints": true
     }
   ]
 }

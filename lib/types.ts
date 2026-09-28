@@ -2,6 +2,8 @@
 
 import type { ItemWithImages } from "@/db/schema";
 
+export type { BuyCheck } from "@/lib/buy-check-schema";
+
 export type ProductInfo = {
   name: string;
   brand: string | null;

@@ -100,7 +100,7 @@ export function Sheet({
   );
 }
 
-const STATUS_LABEL = { owned: "Owned", for_sale: "For sale", sold: "Sold" } as const;
+const STATUS_LABEL = { owned: "Owned", for_sale: "For sale", sold: "Sold", considering: "Wishlist" } as const;
 
 export function StatusBadge({ status }: { status: keyof typeof STATUS_LABEL }) {
   return (
@@ -110,6 +110,7 @@ export function StatusBadge({ status }: { status: keyof typeof STATUS_LABEL }) {
         status === "owned" && "bg-surface-2 text-muted",
         status === "for_sale" && "bg-accent/15 text-accent",
         status === "sold" && "bg-good/15 text-good",
+        status === "considering" && "bg-warn/15 text-warn",
       )}
     >
       {STATUS_LABEL[status]}

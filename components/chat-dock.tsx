@@ -13,7 +13,7 @@ type Message = { role: "user" | "assistant"; content: string; proposals?: ItemPr
 const SUGGESTIONS = [
   "What's my most valuable item?",
   "What should I consider selling?",
-  "How much is my electronics worth?",
+  "I'm thinking of buying a new watch",
   "What have I made from selling so far?",
 ];
 
@@ -224,14 +224,18 @@ const FIELD_LABELS: Record<string, string> = {
   soldPrice: "Sold price",
   soldDate: "Sold date",
   soldPlatform: "Sold on",
+  joy: "Sparks joy?",
+  considerUntil: "Wait until",
 };
 const MONEY_FIELDS = new Set(["purchasePrice", "msrp", "estimatedValue", "askingPrice", "soldPrice"]);
-const STATUS_LABELS: Record<string, string> = { owned: "Owned", for_sale: "For sale", sold: "Sold" };
+const STATUS_LABELS: Record<string, string> = { owned: "Owned", for_sale: "For sale", sold: "Sold", considering: "Wishlist" };
+const JOY_LABELS: Record<string, string> = { sparks: "✨ Sparks joy", neutral: "Neutral", no: "Doesn't" };
 
 function formatValue(field: string, value: string | number | null) {
   if (value == null || value === "") return "—";
   if (MONEY_FIELDS.has(field)) return money(Number(value));
   if (field === "status") return STATUS_LABELS[value] ?? String(value);
+  if (field === "joy") return JOY_LABELS[value] ?? String(value);
   return String(value);
 }
 

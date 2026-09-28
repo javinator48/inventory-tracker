@@ -275,7 +275,7 @@ export function AddItemSheet({
   );
 }
 
-function MethodButton({ icon, title, detail, onClick }: { icon: React.ReactNode; title: string; detail: string; onClick: () => void }) {
+export function MethodButton({ icon, title, detail, onClick }: { icon: React.ReactNode; title: string; detail: string; onClick: () => void }) {
   return (
     <button
       onClick={onClick}

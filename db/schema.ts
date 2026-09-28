@@ -1,9 +1,14 @@
 import { sql } from "drizzle-orm";
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
-import type { ItemProposal } from "@/lib/types";
+import type { BuyCheck, ItemProposal } from "@/lib/types";
 
-export const ITEM_STATUSES = ["owned", "for_sale", "sold"] as const;
+// "considering" is the wishlist: things the user may buy, which don't count as owned.
+export const ITEM_STATUSES = ["owned", "for_sale", "sold", "considering"] as const;
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
+
+/** Whether an owned item sparks joy (KonMari). */
+export const JOY_LEVELS = ["sparks", "neutral", "no"] as const;
+export type JoyLevel = (typeof JOY_LEVELS)[number];
 
 export const items = sqliteTable("items", {
   id: integer("id").primaryKey({ autoIncrement: true }),
@@ -18,6 +23,11 @@ export const items = sqliteTable("items", {
   location: text("location"),
   notes: text("notes"),
   status: text("status", { enum: ITEM_STATUSES }).notNull().default("owned"),
+  joy: text("joy", { enum: JOY_LEVELS }),
+  /** Wishlist items: end of the cooling-off period (YYYY-MM-DD). */
+  considerUntil: text("consider_until"),
+  /** Wishlist items: the last "before you buy" check. */
+  buyCheck: text("buy_check", { mode: "json" }).$type<BuyCheck>(),
 
   purchasePrice: real("purchase_price"),
   purchaseDate: text("purchase_date"),

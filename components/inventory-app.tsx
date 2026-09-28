@@ -1,13 +1,15 @@
 "use client";
 
-import { Package, Plus, Search } from "lucide-react";
+import { Heart, Package, Plus, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ItemStatus, ItemWithImages } from "@/db/schema";
 import { api, money } from "@/lib/client";
 import type { InventoryStats } from "@/lib/items";
 import { AddItemSheet } from "./add-item-sheet";
+import { BuyCheckSheet } from "./buy-check-sheet";
 import { ChatDock } from "./chat-dock";
 import { ItemDetailSheet } from "./item-detail-sheet";
+import { daysUntil, waitLabel } from "./mindful";
 import { StatsView } from "./stats-view";
 import { cn, StatusBadge } from "./ui";
 
@@ -17,6 +19,7 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "owned", label: "Owned" },
   { id: "for_sale", label: "For sale" },
   { id: "sold", label: "Sold" },
+  { id: "considering", label: "Wishlist" },
   { id: "stats", label: "Stats" },
 ];
 
@@ -27,6 +30,7 @@ export function InventoryApp() {
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("");
   const [adding, setAdding] = useState(false);
+  const [checkingPurchase, setCheckingPurchase] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -56,7 +60,7 @@ export function InventoryApp() {
   }, [items, tab, query, category]);
 
   const counts = useMemo(() => {
-    const c = { owned: 0, for_sale: 0, sold: 0 };
+    const c = { owned: 0, for_sale: 0, sold: 0, considering: 0 };
     for (const i of items ?? []) c[i.status]++;
     return c;
   }, [items]);
@@ -84,12 +88,20 @@ export function InventoryApp() {
             </p>
           )}
         </div>
-        <button
-          onClick={() => setAdding(true)}
-          className="flex h-11 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg shadow-sm hover:brightness-110"
-        >
-          <Plus size={18} /> Add item
-        </button>
+        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row-reverse sm:items-center">
+          <button
+            onClick={() => setAdding(true)}
+            className="flex h-11 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg shadow-sm hover:brightness-110"
+          >
+            <Plus size={18} /> Add item
+          </button>
+          <button
+            onClick={() => setCheckingPurchase(true)}
+            className="flex h-9 items-center gap-1.5 rounded-full bg-surface-2 px-3.5 text-sm font-medium hover:bg-border sm:h-11 sm:px-4"
+          >
+            <Heart size={16} className="text-accent" /> Before you buy
+          </button>
+        </div>
       </header>
 
       <nav className="sticky top-0 z-30 -mx-4 bg-background/90 px-4 py-2 backdrop-blur" aria-label="Inventory sections">
@@ -100,7 +112,7 @@ export function InventoryApp() {
               onClick={() => setTab(t.id)}
               aria-current={tab === t.id ? "page" : undefined}
               className={cn(
-                "flex flex-1 items-center justify-center gap-1.5 rounded-xl py-2 text-sm font-medium transition-colors",
+                "flex min-w-0 flex-1 items-center justify-center gap-1 rounded-xl py-2 text-[13px] font-medium transition-colors sm:gap-1.5 sm:text-sm",
                 tab === t.id ? "bg-surface shadow-sm" : "text-muted hover:text-foreground",
               )}
             >
@@ -147,7 +159,11 @@ export function InventoryApp() {
           {items === null && !loadError ? (
             <p className="py-16 text-center text-sm text-muted">Loading…</p>
           ) : visible.length === 0 ? (
-            <EmptyState tab={tab} filtered={Boolean(query || category)} onAdd={() => setAdding(true)} />
+            <EmptyState
+              tab={tab}
+              filtered={Boolean(query || category)}
+              onAdd={() => (tab === "considering" ? setCheckingPurchase(true) : setAdding(true))}
+            />
           ) : (
             <ul className="grid grid-cols-2 gap-3 pt-3 sm:grid-cols-3 lg:grid-cols-4">
               {visible.map((item) => (
@@ -160,10 +176,21 @@ export function InventoryApp() {
         </>
       )}
 
+      {checkingPurchase && (
+        <BuyCheckSheet
+          onClose={() => setCheckingPurchase(false)}
+          onOpenItem={setSelectedId}
+          onSaved={(item) => {
+            upsert(item);
+            setCheckingPurchase(false);
+            setTab(item.status);
+          }}
+        />
+      )}
       {adding && (
       <AddItemSheet
         onClose={() => setAdding(false)}
-        defaultStatus={tab === "stats" ? "owned" : tab}
+        defaultStatus={tab === "stats" || tab === "considering" ? "owned" : tab}
         categories={categories}
         onSaved={(item) => {
           upsert(item);
@@ -178,6 +205,8 @@ export function InventoryApp() {
         categories={categories}
         onClose={() => setSelectedId(null)}
         onChanged={upsert}
+        onOpenItem={setSelectedId}
+        allItems={items ?? []}
         onDeleted={(id) => {
           setSelectedId(null);
           setItems((list) => (list ?? []).filter((i) => i.id !== id));
@@ -209,15 +238,33 @@ function ItemCard({ item, onClick }: { item: ItemWithImages; onClick: () => void
         )}
       </div>
       <div className="flex flex-col gap-1 p-3">
-        <p className="line-clamp-2 text-sm font-medium leading-snug">{item.name}</p>
+        <p className="line-clamp-2 text-sm font-medium leading-snug">
+          {item.joy === "sparks" && (
+            <span title="Sparks joy" className="mr-1">
+              ✨
+            </span>
+          )}
+          {item.name}
+        </p>
         <div className="flex items-center justify-between gap-2">
           <span className="tabular text-sm font-semibold">
             {money(price == null ? null : price * item.quantity, { whole: true })}
             {item.quantity > 1 && <span className="font-normal text-muted"> · ×{item.quantity}</span>}
           </span>
-          {item.status !== "owned" && <StatusBadge status={item.status} />}
+          {item.status !== "owned" && item.status !== "considering" && <StatusBadge status={item.status} />}
         </div>
-        {item.category && <p className="truncate text-xs text-muted">{item.category}</p>}
+        {item.status === "considering" ? (
+          <p
+            className={cn(
+              "truncate text-xs font-medium",
+              item.considerUntil && daysUntil(item.considerUntil) > 0 ? "text-muted" : "text-accent",
+            )}
+          >
+            {waitLabel(item.considerUntil)}
+          </p>
+        ) : (
+          item.category && <p className="truncate text-xs text-muted">{item.category}</p>
+        )}
       </div>
     </button>
   );
@@ -230,14 +277,16 @@ function EmptyState({ tab, filtered, onAdd }: { tab: ItemStatus; filtered: boole
         owned: "Nothing here yet. Add your first item by scanning its barcode, snapping a photo, or typing it in.",
         for_sale: "Nothing listed. Open an item and tap “Sell this” to move it here.",
         sold: "Items you mark as sold show up here with what you made.",
+        considering:
+          "Thinking about buying something? Check it against what you own first, and give it a few days on your wishlist before you decide.",
       }[tab];
   return (
     <div className="flex flex-col items-center gap-4 py-16 text-center">
       <Package size={40} strokeWidth={1.5} className="text-muted/60" />
       <p className="max-w-xs text-sm text-muted">{text}</p>
-      {!filtered && tab === "owned" && (
+      {!filtered && (tab === "owned" || tab === "considering") && (
         <button onClick={onAdd} className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-accent-fg">
-          Add an item
+          {tab === "owned" ? "Add an item" : "Before you buy"}
         </button>
       )}
     </div>

@@ -5,12 +5,15 @@ import type {
   BetaToolResultContentBlockParam,
 } from "@anthropic-ai/sdk/resources/beta/messages/messages";
 import { z } from "zod";
-import { ITEM_STATUSES } from "@/db/schema";
+import { ITEM_STATUSES, JOY_LEVELS } from "@/db/schema";
+import type { BuyCheck } from "@/lib/buy-check-schema";
 import { findWorkingImages } from "@/lib/images";
 import { addImage, createItem, getItem, getStats, itemInputSchema, itemPatchSchema, itemValue, listItems } from "@/lib/items";
 import { downloadImage, saveImage } from "@/lib/storage";
 import type { ChatEvent, ItemProposal } from "@/lib/types";
+import { checkPurchase, purchaseCandidateSchema } from "./buy-check";
 import { AiNotConfiguredError, aiConfigured, FALLBACK_PARAMS, getClient, MODEL, WEB_SEARCH_TOOL } from "./client";
+import { KONMARI_GUIDANCE } from "./konmari";
 
 const searchItems = betaZodTool({
   name: "search_items",
@@ -39,6 +42,8 @@ const searchItems = betaZodTool({
         countedValue: itemValue(i),
         askingPrice: i.askingPrice,
         soldPrice: i.soldPrice,
+        joy: i.joy,
+        considerUntil: i.considerUntil,
       })),
     );
   },
@@ -81,7 +86,9 @@ function itemFields(clearable: boolean) {
     quantity: z.number().int().min(1).optional(),
     location: opt(z.string()).describe("Where it is kept"),
     notes: opt(z.string()),
-    status: z.enum(ITEM_STATUSES).optional(),
+    status: z.enum(ITEM_STATUSES).optional().describe("\"considering\" = wishlist"),
+    joy: opt(z.enum(JOY_LEVELS)).describe("Does it spark joy: sparks, neutral or no"),
+    considerUntil: opt(z.string()).describe("Wishlist only: end of the cooling-off period, YYYY-MM-DD. Defaults to 7 days"),
     purchasePrice: money(),
     purchaseDate: opt(z.string()).describe("YYYY-MM-DD"),
     msrp: money(),
@@ -95,18 +102,31 @@ function itemFields(clearable: boolean) {
 
 const validationMessage = (error: z.ZodError) => error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
 
+/** Per-reply state shared between tools. */
+type TurnContext = { lastCheck: BuyCheck | null };
+
 /** Creates an item and tells the client so the list updates without a reload. */
-function addItemTool(emit: (event: ChatEvent) => void) {
+function addItemTool(emit: (event: ChatEvent) => void, ctx: TurnContext) {
   return betaZodTool({
     name: "add_item",
     description:
-      "Add a new item to the inventory. Only name is required. Fill in only fields the user gave you or that you verified (e.g. via web search); leave the rest out. Status defaults to owned. Returns the created item with its id. Call once per distinct item; use quantity for multiples of the same thing.",
+      "Add a new item to the inventory. Only name is required. Fill in only fields the user gave you or that you verified (e.g. via web search); leave the rest out. Status defaults to owned. Returns the created item with its id. Call once per distinct item; use quantity for multiples of the same thing. For a wishlist item (status \"considering\"), put the price they'd pay in estimatedValue.",
     inputSchema: z.object({
       name: z.string().min(1).describe("Short product name, e.g. \"Citizen Navihawk A-T JY8030\""),
       ...itemFields(false),
     }),
     run: async (input) => {
-      const parsed = itemInputSchema.safeParse(input);
+      // A wishlist item keeps its purchase check: the one just run, or a fresh one (e.g. when
+      // the check happened in an earlier message).
+      let buyCheck: BuyCheck | null = null;
+      if (input.status === "considering") {
+        buyCheck =
+          ctx.lastCheck ??
+          (await checkPurchase(purchaseCandidateSchema.parse({ ...input, price: input.estimatedValue ?? null }))
+            .then((r) => r.check)
+            .catch(() => null));
+      }
+      const parsed = itemInputSchema.safeParse({ ...input, buyCheck });
       if (!parsed.success) return `Invalid item: ${validationMessage(parsed.error)}`;
       const row = await createItem(parsed.data);
       const item = await getItem(row.id);
@@ -137,9 +157,11 @@ function proposeUpdateTool(emit: (event: ChatEvent) => void) {
 
       const patch: Record<string, string | number | null> = {};
       const diff: ItemProposal["changes"] = [];
-      for (const [field, to] of Object.entries(parsed.data) as [keyof typeof parsed.data, string | number | null][]) {
-        if (to === undefined) continue;
-        const from = item[field] ?? null;
+      for (const [key, value] of Object.entries(parsed.data)) {
+        const field = key as keyof typeof parsed.data;
+        if (value === undefined || field === "buyCheck") continue;
+        const to = value as string | number | null;
+        const from = (item[field] ?? null) as string | number | null;
         if (from === to) continue;
         patch[field] = to;
         diff.push({ field, from, to });
@@ -151,6 +173,27 @@ function proposeUpdateTool(emit: (event: ChatEvent) => void) {
         proposal: { id: crypto.randomUUID(), itemId, itemName: item.name, changes: diff, patch },
       });
       return "Shown to the user as a confirmation card. Not saved yet: it saves when they tap Apply. Don't propose the same change again unless they ask.";
+    },
+  });
+}
+
+function checkPurchaseTool(ctx: TurnContext) {
+  return betaZodTool({
+    name: "check_purchase",
+    description:
+      "Before the user buys something: compare it with everything they own and get a KonMari-style verdict (go / wait / skip), the owned items it overlaps with, owned items that don't spark joy it could replace, and reflection questions. Pass as much as you know about the product.",
+    inputSchema: z.object({
+      name: z.string().min(1),
+      brand: z.string().optional(),
+      model: z.string().optional(),
+      category: z.string().optional(),
+      description: z.string().optional().describe("What it is and what it's for"),
+      price: z.number().min(0).optional().describe("What they'd pay, USD"),
+    }),
+    run: async (input) => {
+      const { check } = await checkPurchase(purchaseCandidateSchema.parse(input));
+      ctx.lastCheck = check;
+      return JSON.stringify(check);
     },
   });
 }
@@ -229,7 +272,7 @@ async function systemPrompt() {
   const stats = await getStats();
   const today = new Date().toISOString().slice(0, 10);
   return `You are the inventory assistant inside the user's personal inventory tracker app. Today is ${today}.
-The user catalogues items they own (status "owned"), items they are trying to sell ("for_sale"), and items they have sold ("sold").
+The user catalogues items they own (status "owned"), items they are trying to sell ("for_sale"), items they have sold ("sold"), and a wishlist of things they're considering buying ("considering"). Wishlist items aren't owned and don't count in any totals. Owned items can have a joy rating: "sparks", "neutral" or "no".
 
 How values work in the app: all prices (purchasePrice, msrp, estimatedValue, askingPrice, soldPrice) are per unit, and totals multiply by quantity. An item is counted at its estimatedValue, falling back to msrp, then purchasePrice. Money is USD. Selling only some units of an item is done from the item's "Mark sold" screen, which splits off a sold copy; you can't do that split yourself.
 
@@ -241,7 +284,11 @@ Photos: when you add an item, also try to give it a photo unless the user says n
 
 To change an existing item (fix a field, update an estimate, mark it for sale or sold), look it up and call propose_update. The user confirms it with an Apply button, so say "tap Apply to save" rather than claiming it's saved. Photos added with add_item_image don't need confirmation. You can't delete items; tell the user to do that from the item's page.
 
-Current snapshot: ${stats.counts.owned} owned, ${stats.counts.forSale} for sale, ${stats.counts.sold} sold. Total estimated value of unsold items: $${stats.totalValue}.`;
+Mindful buying: the user wants everything they buy to be meaningful and to avoid buying things that duplicate what they already own. Whenever they mention wanting, eyeing or being about to buy something, call check_purchase first (identify the product with web search if needed), then answer from its result: the verdict, the items they already own that overlap (by name), and one or two of the reflection questions. Offer to add it to their wishlist with a cooling-off period (add_item with status "considering"; considerUntil defaults to a week, and the check is saved with it). If they bought it, add it as owned instead. You can also help them rate existing items' joy with propose_update, and suggest letting go of items that don't spark joy.
+
+${KONMARI_GUIDANCE}
+
+Current snapshot: ${stats.counts.owned} owned, ${stats.counts.forSale} for sale, ${stats.counts.sold} sold, ${stats.counts.considering} on the wishlist. Total estimated value of owned and for-sale items: $${stats.totalValue}.`;
 }
 
 const TOOL_STATUS: Record<string, string> = {
@@ -249,12 +296,14 @@ const TOOL_STATUS: Record<string, string> = {
   find_images: "Looking for photos…",
   add_item_image: "Adding the photo…",
   propose_update: "Preparing the change…",
+  check_purchase: "Comparing with what you own…",
 };
 
 /** Streams an assistant reply as ChatEvents. Returns the full reply text. */
 export async function runAssistant(history: BetaMessageParam[], emit: (event: ChatEvent) => void): Promise<string> {
   if (!aiConfigured()) throw new AiNotConfiguredError();
 
+  const ctx: TurnContext = { lastCheck: null };
   const runner = getClient().beta.messages.toolRunner({
     ...FALLBACK_PARAMS,
     betas: [...FALLBACK_PARAMS.betas],
@@ -263,7 +312,17 @@ export async function runAssistant(history: BetaMessageParam[], emit: (event: Ch
     thinking: { type: "adaptive" },
     output_config: { effort: "medium" },
     system: await systemPrompt(),
-    tools: [searchItems, getItemDetails, getInventoryStats, addItemTool(emit), proposeUpdateTool(emit), findImages, addItemImageTool(emit), WEB_SEARCH_TOOL],
+    tools: [
+      searchItems,
+      getItemDetails,
+      getInventoryStats,
+      checkPurchaseTool(ctx),
+      addItemTool(emit, ctx),
+      proposeUpdateTool(emit),
+      findImages,
+      addItemImageTool(emit),
+      WEB_SEARCH_TOOL,
+    ],
     messages: history,
     max_iterations: 12,
     stream: true,

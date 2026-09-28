@@ -37,7 +37,16 @@ export function StatsView({ stats, onOpenItem }: { stats: InventoryStats | null;
           tone={toneOf(stats.realizedProfit)}
           sub="Sold minus paid"
         />
+        {stats.counts.considering > 0 && (
+          <Tile
+            label="On your wishlist"
+            value={money(stats.wishlistCost, { whole: true })}
+            sub={`${stats.counts.considering} item${stats.counts.considering === 1 ? "" : "s"}, not counted above`}
+          />
+        )}
       </div>
+
+      <JoySection joy={stats.joy} onOpenItem={onOpenItem} />
 
       {stats.itemsMissingValue > 0 && (
         <p className="rounded-xl bg-warn/10 px-3 py-2 text-sm text-warn">
@@ -118,6 +127,60 @@ export function StatsView({ stats, onOpenItem }: { stats: InventoryStats | null;
         )}
       </section>
     </div>
+  );
+}
+
+function JoySection({ joy, onOpenItem }: { joy: InventoryStats["joy"]; onOpenItem: (id: number) => void }) {
+  const rated = joy.sparks + joy.neutral + joy.no;
+  const total = rated + joy.unrated;
+  if (total === 0) return null;
+  const bar = [
+    { key: "sparks", n: joy.sparks, className: "bg-accent", label: "✨ Sparks joy" },
+    { key: "neutral", n: joy.neutral, className: "bg-muted/50", label: "Neutral" },
+    { key: "no", n: joy.no, className: "bg-bad/70", label: "Doesn't" },
+  ];
+
+  return (
+    <section className="rounded-2xl bg-surface p-4">
+      <h3 className="text-sm font-semibold">Sparks joy</h3>
+      <p className="mb-3 text-xs text-muted">
+        {rated === 0
+          ? "Open an item and rate whether it sparks joy. It helps the “Before you buy” check too."
+          : `${joy.sparks} of ${rated} rated item${rated === 1 ? "" : "s"} spark joy${joy.unrated ? ` · ${joy.unrated} not rated yet` : ""}`}
+      </p>
+      {rated > 0 && (
+        <>
+          <div className="flex h-2.5 overflow-hidden rounded-full bg-surface-2" role="img" aria-label="Joy ratings">
+            {bar.map((b) => b.n > 0 && <div key={b.key} className={b.className} style={{ width: `${(b.n / rated) * 100}%` }} />)}
+          </div>
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted">
+            {bar.map((b) => (
+              <span key={b.key} className="flex items-center gap-1.5">
+                <span className={cn("size-2 rounded-full", b.className)} /> {b.label} {b.n}
+              </span>
+            ))}
+          </div>
+        </>
+      )}
+      {joy.notSparking.length > 0 && (
+        <div className="mt-4">
+          <p className="mb-1 text-xs font-medium text-muted">Doesn&apos;t spark joy · consider letting go, with thanks</p>
+          <ul className="flex flex-col">
+            {joy.notSparking.map((i) => (
+              <li key={i.id}>
+                <button
+                  onClick={() => onOpenItem(i.id)}
+                  className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left text-sm hover:bg-surface-2"
+                >
+                  <span className="min-w-0 flex-1 truncate">{i.name}</span>
+                  <span className="tabular text-muted">{money(i.value, { whole: true })}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 
