@@ -2,6 +2,8 @@
 
 A self-hosted web app for keeping track of everything you own, what you're selling, what you've sold, and what it's all worth. Add items by scanning a barcode, snapping a photo, or typing them in. An AI assistant, powered by Claude, can answer questions about your stuff.
 
+**Pitch deck:** [the initial design and pitch](https://docs.google.com/presentation/d/1sWD1LqNrcgayIe4fzixb32bBf7VCoue6eGM6s2TjCuQ/edit), presented live at a USC startup incubator event.
+
 <p align="center">
   <img src="docs/screenshots/mobile-inventory.png" width="24%" alt="Inventory grid on mobile" />
   <img src="docs/screenshots/mobile-item.png" width="24%" alt="Item details on mobile" />
