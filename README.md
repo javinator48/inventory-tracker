@@ -67,22 +67,23 @@ The same check runs in the chat. Tell the assistant *"I'm thinking of buying…"
 
 Thinking of buying clothes? Tap **Try it on**, add photos or names of the pieces, and Claude pairs them with clothes you already own, using their photos too. It also flags anything that nearly duplicates what's in your wardrobe. Tap **See it on me** and [Gemini](https://aistudio.google.com/apikey) draws your saved photo wearing that outfit. This part needs a `GEMINI_API_KEY`; the pairings work without one.
 
-In this example, the pieces being considered are an **olive field jacket** (a photo) and **brown suede Chelsea boots** (just a name). The sample wardrobe already includes jeans, a white oxford shirt, a grey merino sweater and an olive M-65 field jacket rated *neutral*. Claude suggested four outfits. It also pointed out that the new jacket is a near-copy of the M-65, and suggested deciding whether that one still sparks joy before buying another.
+In this example, the pieces being considered are an **olive field jacket** and **brown suede Chelsea boots**, both added as photos. The sample wardrobe already includes dark jeans, a white oxford shirt, a grey merino sweater, navy chinos, white sneakers and an olive M-65 field jacket rated *neutral*. Claude suggested four outfits. It also pointed out that the new jacket is a near-copy of the M-65, and suggested deciding whether that one still sparks joy before buying another.
 
 <p align="center">
   <img src="docs/screenshots/mobile-try-on-ideas.png" width="36%" alt="Outfit ideas: advice, and a warning that the new jacket nearly duplicates an owned M-65" />
-  <img src="docs/screenshots/mobile-try-on.png" width="36%" alt="The Field jacket layered outfit, with its try-on image" />
+  <img src="docs/screenshots/mobile-try-on.png" width="36%" alt="The Field jacket layer-up outfit, with its try-on image" />
 </p>
 
-The try-on for the *Field jacket layered* outfit (the new jacket and boots with the owned oxford shirt and jeans), made from the photo on the left:
+The try-on for the *Field jacket layer-up* outfit (the new jacket and boots with the owned grey merino sweater and dark jeans). The inputs are the photo of the person and the photos of each piece; the result is on the right:
 
 <p align="center">
-  <img src="docs/screenshots/try-on-model.jpg" width="30%" alt="Input photo: a fictional model in a white t-shirt and grey trousers" />
-  <img src="docs/screenshots/try-on-jacket.jpg" width="30%" alt="Photo of the olive field jacket being considered" />
-  <img src="docs/screenshots/try-on-result.jpg" width="30%" alt="Try-on result: the same model wearing the field jacket, white oxford shirt, dark jeans and brown suede Chelsea boots" />
+  <img src="docs/screenshots/try-on-model.jpg" width="23%" alt="Input photo: a fictional model in a white t-shirt and grey trousers" />
+  <img src="docs/screenshots/try-on-jacket.jpg" width="23%" alt="Photo of the olive field jacket being considered" />
+  <img src="docs/screenshots/try-on-boots.jpg" width="23%" alt="Photo of the brown suede Chelsea boots being considered" />
+  <img src="docs/screenshots/try-on-result.jpg" width="23%" alt="Try-on result: the same model wearing the field jacket over the grey merino sweater, with dark jeans and brown suede Chelsea boots" />
 </p>
 
-The person in the photo is **fictional**: they were generated with Gemini for this example, so no real person's likeness is used. In the app, you use a photo of yourself. It's stored locally and only sent to Gemini when you ask to see an outfit on you.
+The person in the photo is **fictional**: they were generated with Gemini for this example, so no real person's likeness is used. The boots and the sample wardrobe's product photos were generated with Gemini too. In the app, you use a photo of yourself. It's stored locally and only sent to Gemini when you ask to see an outfit on you.
 
 ## Tech stack
 
@@ -158,7 +159,7 @@ Each item counts at its **estimated value**, falling back to its **MSRP** and th
 
 ## Screenshot credits
 
-The screenshots use sample data. The person in the try-on example is fictional and was generated with Gemini. The product photos come from Wikimedia Commons:
+The screenshots use sample data. In the try-on example, the person, the boots and the wardrobe photos were generated with Gemini. The other product photos come from Wikimedia Commons:
 
 | Item | Photo | License |
 |---|---|---|
@@ -172,6 +173,5 @@ The screenshots use sample data. The person in the try-on example is fictional a
 | LEGO Millennium Falcon | [Cappo80](https://commons.wikimedia.org/wiki/File:Millennium_falcon_lego.jpg) | Public domain |
 | Road bike | [Roy Egloff](https://commons.wikimedia.org/wiki/File:CH.ZH.Affoltern-am-Albis_2024-03-30_road-bike-racing.jpg) | CC BY-SA 4.0 |
 | Olive field jacket (try-on example) | [Anonymous](https://commons.wikimedia.org/wiki/File:(US)_JACKET,_FIELD,_M-1943_(STOCK_NO_55-J-190-55-J-192-98),_2002.1743.jpg) | CC0 |
-| Jeans (try-on example) | [Mark Hillary](https://commons.wikimedia.org/wiki/File:Jeans_2009.jpg) | CC BY 2.0 |
 
 Product names and trademarks belong to their owners.
