@@ -2,6 +2,7 @@
   "name": "inventory-tracker",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "scripts": {
     "dev": "next dev -H 0.0.0.0",
     "dev:https": "next dev --experimental-https -H 0.0.0.0",

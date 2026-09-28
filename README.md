@@ -175,3 +175,7 @@ The screenshots use sample data. In the try-on example, the person, the boots an
 | Olive field jacket (try-on example) | [Anonymous](https://commons.wikimedia.org/wiki/File:(US)_JACKET,_FIELD,_M-1943_(STOCK_NO_55-J-190-55-J-192-98),_2002.1743.jpg) | CC0 |
 
 Product names and trademarks belong to their owners.
+
+## License
+
+The code is released under the [MIT License](LICENSE). The photos in `docs/screenshots/` that come from Wikimedia Commons keep their own licenses, listed under [Screenshot credits](#screenshot-credits).
