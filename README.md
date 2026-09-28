@@ -63,6 +63,27 @@ In this example, the sample inventory includes a Fujifilm X100V marked ✨ *spar
 
 The same check runs in the chat. Tell the assistant *"I'm thinking of buying…"*, and it can add the item to your wishlist for you. The guidance paraphrases Marie Kondo's *The Life-Changing Magic of Tidying Up* (see `lib/ai/konmari.ts`). Verdicts are written by Claude and vary from run to run.
 
+## Try it on: an example
+
+Thinking of buying clothes? Tap **Try it on**, add photos or names of the pieces, and Claude pairs them with clothes you already own, using their photos too. It also flags anything that nearly duplicates what's in your wardrobe. Tap **See it on me** and [Gemini](https://aistudio.google.com/apikey) draws your saved photo wearing that outfit. This part needs a `GEMINI_API_KEY`; the pairings work without one.
+
+In this example, the pieces being considered are an **olive field jacket** (a photo) and **brown suede Chelsea boots** (just a name). The sample wardrobe already includes jeans, a white oxford shirt, a grey merino sweater and an olive M-65 field jacket rated *neutral*. Claude suggested four outfits. It also pointed out that the new jacket is a near-copy of the M-65, and suggested deciding whether that one still sparks joy before buying another.
+
+<p align="center">
+  <img src="docs/screenshots/mobile-try-on-ideas.png" width="36%" alt="Outfit ideas: advice, and a warning that the new jacket nearly duplicates an owned M-65" />
+  <img src="docs/screenshots/mobile-try-on.png" width="36%" alt="The Field jacket layered outfit, with its try-on image" />
+</p>
+
+The try-on for the *Field jacket layered* outfit (the new jacket and boots with the owned oxford shirt and jeans), made from the photo on the left:
+
+<p align="center">
+  <img src="docs/screenshots/try-on-model.jpg" width="30%" alt="Input photo: a fictional model in a white t-shirt and grey trousers" />
+  <img src="docs/screenshots/try-on-jacket.jpg" width="30%" alt="Photo of the olive field jacket being considered" />
+  <img src="docs/screenshots/try-on-result.jpg" width="30%" alt="Try-on result: the same model wearing the field jacket, white oxford shirt, dark jeans and brown suede Chelsea boots" />
+</p>
+
+The person in the photo is **fictional**: they were generated with Gemini for this example, so no real person's likeness is used. In the app, you use a photo of yourself. It's stored locally and only sent to Gemini when you ask to see an outfit on you.
+
 ## Tech stack
 
 - [Next.js 16](https://nextjs.org/) (App Router), React 19, TypeScript, Tailwind CSS v4
@@ -137,7 +158,7 @@ Each item counts at its **estimated value**, falling back to its **MSRP** and th
 
 ## Screenshot credits
 
-The screenshots use sample data. The product photos come from Wikimedia Commons:
+The screenshots use sample data. The person in the try-on example is fictional and was generated with Gemini. The product photos come from Wikimedia Commons:
 
 | Item | Photo | License |
 |---|---|---|
@@ -150,5 +171,7 @@ The screenshots use sample data. The product photos come from Wikimedia Commons:
 | iPad Air | [メイド理世](https://commons.wikimedia.org/wiki/File:About_iPad_Air_11-inch_(M2).jpg) | CC BY-SA 4.0 |
 | LEGO Millennium Falcon | [Cappo80](https://commons.wikimedia.org/wiki/File:Millennium_falcon_lego.jpg) | Public domain |
 | Road bike | [Roy Egloff](https://commons.wikimedia.org/wiki/File:CH.ZH.Affoltern-am-Albis_2024-03-30_road-bike-racing.jpg) | CC BY-SA 4.0 |
+| Olive field jacket (try-on example) | [Anonymous](https://commons.wikimedia.org/wiki/File:(US)_JACKET,_FIELD,_M-1943_(STOCK_NO_55-J-190-55-J-192-98),_2002.1743.jpg) | CC0 |
+| Jeans (try-on example) | [Mark Hillary](https://commons.wikimedia.org/wiki/File:Jeans_2009.jpg) | CC BY 2.0 |
 
 Product names and trademarks belong to their owners.
