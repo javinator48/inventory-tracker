@@ -89,7 +89,11 @@ When you are done researching, call the recording tool once with your findings.`
  * Runs Claude with web search plus one strict "record" tool and returns that tool's input.
  * Resumes paused server-tool turns and nudges once if Claude answers without calling the tool.
  */
-async function researchAndRecord(content: BetaContentBlockParam[], recordTool: BetaTool): Promise<unknown> {
+export async function researchAndRecord(
+  content: BetaContentBlockParam[],
+  recordTool: BetaTool,
+  system: string = SYSTEM,
+): Promise<unknown> {
   if (!aiConfigured()) throw new AiNotConfiguredError();
   const client = getClient();
   const messages: BetaMessageParam[] = [{ role: "user", content }];
@@ -102,7 +106,7 @@ async function researchAndRecord(content: BetaContentBlockParam[], recordTool: B
       max_tokens: 16000,
       thinking: { type: "adaptive" },
       output_config: { effort: "medium" },
-      system: SYSTEM,
+      system,
       tools: [WEB_SEARCH_TOOL, recordTool],
       messages,
     });

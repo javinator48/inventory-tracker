@@ -2,8 +2,9 @@ import "server-only";
 import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
+import { buyCheckSchema } from "@/lib/buy-check-schema";
 import { copyImage, deleteImage } from "@/lib/storage";
-import { ITEM_STATUSES, itemImages, items, type Item, type ItemStatus, type ItemWithImages } from "@/db/schema";
+import { ITEM_STATUSES, itemImages, items, JOY_LEVELS, type Item, type ItemStatus, type ItemWithImages } from "@/db/schema";
 
 const optionalText = z.string().trim().max(5000).nullish().transform((v) => v || null);
 const optionalMoney = z.coerce.number().min(0).nullish().or(z.literal("").transform(() => null));
@@ -21,6 +22,9 @@ const itemFieldsSchema = z.object({
   location: optionalText,
   notes: optionalText,
   status: z.enum(ITEM_STATUSES),
+  joy: z.enum(JOY_LEVELS).nullish().transform((v) => v ?? null),
+  considerUntil: optionalDate,
+  buyCheck: buyCheckSchema.nullish().transform((v) => v ?? null),
   purchasePrice: optionalMoney,
   purchaseDate: optionalDate,
   msrp: optionalMoney,
@@ -43,6 +47,10 @@ export type ItemInput = z.infer<typeof itemInputSchema>;
 const now = () => new Date().toISOString();
 /** Today's date in the server's local timezone, as YYYY-MM-DD. */
 const today = () => new Date().toLocaleDateString("en-CA");
+
+/** Default cooling-off period for wishlist items. */
+export const DEFAULT_WAIT_DAYS = 7;
+const daysFromToday = (days: number) => new Date(Date.now() + days * 86_400_000).toLocaleDateString("en-CA");
 
 /** The value an item is counted at: best estimate available, times quantity. */
 export function itemValue(item: Pick<Item, "estimatedValue" | "msrp" | "purchasePrice" | "quantity">) {
@@ -100,6 +108,9 @@ function withDerivedFields(data: Partial<ItemInput>, existing?: Item) {
   const out: Partial<Item> = { ...data, updatedAt: now() };
   if (data.status === "for_sale" && existing?.status !== "for_sale") out.listedAt = now();
   if (data.status === "sold" && !data.soldDate && !existing?.soldDate) out.soldDate = today();
+  if (data.status === "considering" && !data.considerUntil && !existing?.considerUntil) {
+    out.considerUntil = daysFromToday(DEFAULT_WAIT_DAYS);
+  }
   if (data.estimatedValue !== undefined && data.estimatedValue !== existing?.estimatedValue) {
     out.valueUpdatedAt = now();
   }
@@ -209,7 +220,8 @@ export type InventoryStats = Awaited<ReturnType<typeof getStats>>;
 export async function getStats() {
   const db = await getDb();
   const all = await db.select().from(items);
-  const held = all.filter((i) => i.status !== "sold");
+  const held = all.filter((i) => i.status === "owned" || i.status === "for_sale");
+  const wishlist = all.filter((i) => i.status === "considering");
   const forSale = all.filter((i) => i.status === "for_sale");
   const sold = all.filter((i) => i.status === "sold");
   const round = (n: number) => Math.round(n * 100) / 100;
@@ -234,6 +246,7 @@ export async function getStats() {
       owned: all.filter((i) => i.status === "owned").length,
       forSale: forSale.length,
       sold: sold.length,
+      considering: wishlist.length,
       totalUnits: units(held),
     },
     /** Number of units, i.e. items weighted by quantity. */
@@ -242,7 +255,22 @@ export async function getStats() {
       forSale: units(forSale),
       sold: units(sold),
     },
-    /** Estimated value of everything not yet sold (owned + for sale). */
+    /** What the wishlist would cost: estimate, falling back to MSRP. */
+    wishlistCost: round(wishlist.reduce((s, i) => s + itemValue(i), 0)),
+    /** Joy ratings of owned and for-sale items. */
+    joy: {
+      sparks: held.filter((i) => i.joy === "sparks").length,
+      neutral: held.filter((i) => i.joy === "neutral").length,
+      no: held.filter((i) => i.joy === "no").length,
+      unrated: held.filter((i) => i.joy == null).length,
+      /** Candidates to let go, most valuable first. */
+      notSparking: held
+        .filter((i) => i.joy === "no")
+        .map((i) => ({ id: i.id, name: i.name, value: round(itemValue(i)) }))
+        .sort((a, b) => b.value - a.value)
+        .slice(0, 10),
+    },
+    /** Estimated value of owned and for-sale items. */
     totalValue: round(held.reduce((s, i) => s + itemValue(i), 0)),
     /** Asking prices of listed items, falling back to their estimate. */
     forSaleValue: round(forSale.reduce((s, i) => s + (i.askingPrice != null ? i.askingPrice * i.quantity : itemValue(i)), 0)),

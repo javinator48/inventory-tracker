@@ -1,14 +1,15 @@
 "use client";
 
-import { BadgeDollarSign, ImagePlus, Pencil, RefreshCw, Star, Tag, Trash2, Undo2 } from "lucide-react";
+import { BadgeDollarSign, Check, HeartOff, ImagePlus, Pencil, RefreshCw, Star, Tag, Trash2, Undo2 } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ItemWithImages } from "@/db/schema";
 import { api, jsonBody, money, resizeImage, signedMoney } from "@/lib/client";
-import type { ValueEstimate } from "@/lib/types";
+import type { BuyCheck, ValueEstimate } from "@/lib/types";
 import { ItemForm, toPayload, valuesFromItem, type ItemFormValues } from "./item-form";
+import { daysUntil, JoyPicker, VerdictView, waitLabel } from "./mindful";
 import { Button, cn, ErrorNote, Field, Input, Sheet, Spinner, StatusBadge } from "./ui";
 
-type Mode = "view" | "edit" | "list" | "sell";
+type Mode = "view" | "edit" | "list" | "sell" | "bought";
 
 /** Key this by item id so switching items resets its state. */
 export function ItemDetailSheet({
@@ -16,13 +17,18 @@ export function ItemDetailSheet({
   onClose,
   onChanged,
   onDeleted,
+  onOpenItem,
   categories,
+  allItems,
 }: {
   item: ItemWithImages | null;
   onClose: () => void;
   onChanged: (item: ItemWithImages) => void;
   onDeleted: (id: number) => void;
+  onOpenItem: (id: number) => void;
   categories: string[];
+  /** Every item, for thumbnails of the owned items a wishlist verdict mentions. */
+  allItems: ItemWithImages[];
 }) {
   const [mode, setMode] = useState<Mode>("view");
   const [values, setValues] = useState<ItemFormValues | null>(null);
@@ -32,6 +38,7 @@ export function ItemDetailSheet({
   const [imageIndex, setImageIndex] = useState(0);
   const [askingPrice, setAskingPrice] = useState("");
   const [sale, setSale] = useState({ quantity: "", price: "", date: "", platform: "" });
+  const [bought, setBought] = useState({ price: "", date: "" });
   const photoInput = useRef<HTMLInputElement>(null);
 
   if (!item) return null;
@@ -69,6 +76,32 @@ export function ItemDetailSheet({
       onChanged(sold);
       if (remaining) onChanged(remaining);
       setMode("view");
+    });
+
+  const recheck = () =>
+    run("recheck", async () => {
+      const { check } = await api<{ check: BuyCheck }>(
+        "/api/buy-check",
+        jsonBody({
+          product: {
+            name: item.name,
+            brand: item.brand,
+            model: item.model,
+            category: item.category,
+            description: item.description,
+            msrp: item.msrp,
+            price: item.estimatedValue,
+          },
+        }),
+      );
+      onChanged(await api<ItemWithImages>(`/api/items/${item.id}`, jsonBody({ buyCheck: check }, "PATCH")));
+    });
+
+  const letGo = () =>
+    confirm(`Let "${item.name}" go? It will be removed from your wishlist.`) &&
+    run("delete", async () => {
+      await api(`/api/items/${item.id}`, { method: "DELETE" });
+      onDeleted(item.id);
     });
 
   const refresh = async () => onChanged(await api<ItemWithImages>(`/api/items/${item.id}`));
@@ -118,6 +151,48 @@ export function ItemDetailSheet({
           onClick={() => patch({ status: "for_sale", askingPrice: askingPrice || null })}
         >
           List for sale
+        </Button>
+      </div>
+    ) : mode === "bought" ? (
+      <div className="flex gap-2">
+        <Button className="flex-1" onClick={() => setMode("view")}>
+          Cancel
+        </Button>
+        <Button
+          variant="primary"
+          className="flex-[2]"
+          disabled={busy === "save"}
+          onClick={() =>
+            patch({ status: "owned", purchasePrice: bought.price || null, purchaseDate: bought.date || null, considerUntil: null })
+          }
+        >
+          <Check size={16} /> Move to owned
+        </Button>
+      </div>
+    ) : item.status === "considering" ? (
+      <div className="flex gap-2">
+        <Button className="flex-1" onClick={letGo} disabled={busy === "delete"}>
+          <HeartOff size={16} /> Let it go
+        </Button>
+        <Button
+          variant="primary"
+          className="flex-1"
+          onClick={() => {
+            setBought({ price: String(item.estimatedValue ?? item.msrp ?? ""), date: new Date().toLocaleDateString("en-CA") });
+            setMode("bought");
+          }}
+        >
+          <Check size={16} /> Bought it
+        </Button>
+        <Button
+          className="flex-none"
+          aria-label="Edit"
+          onClick={() => {
+            setValues(valuesFromItem(item));
+            setMode("edit");
+          }}
+        >
+          <Pencil size={16} />
         </Button>
       </div>
     ) : mode === "sell" ? (
@@ -214,6 +289,33 @@ export function ItemDetailSheet({
               autoFocus
             />
           </Field>
+        )}
+
+        {mode === "bought" && (
+          <div className="flex flex-col gap-3">
+            {item.considerUntil && daysUntil(item.considerUntil) > 0 && (
+              <p className="rounded-xl bg-warn/10 px-3 py-2 text-sm text-warn">
+                You gave yourself until {new Date(`${item.considerUntil}T00:00`).toLocaleDateString()} to decide (
+                {waitLabel(item.considerUntil)}). If it still feels right, go ahead.
+              </p>
+            )}
+            <div className="grid grid-cols-2 gap-3">
+              <Field label={item.quantity > 1 ? "Price paid (each)" : "Price paid"}>
+                <Input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  step="0.01"
+                  value={bought.price}
+                  onChange={(e) => setBought({ ...bought, price: e.target.value })}
+                  autoFocus
+                />
+              </Field>
+              <Field label="Date">
+                <Input type="date" value={bought.date} onChange={(e) => setBought({ ...bought, date: e.target.value })} />
+              </Field>
+            </div>
+          </div>
         )}
 
         {mode === "sell" && (
@@ -349,6 +451,38 @@ export function ItemDetailSheet({
               ))}
             </div>
 
+            {(item.status === "owned" || item.status === "for_sale") && (
+              <div className="flex flex-col gap-1.5">
+                <p className="text-xs font-medium text-muted">Does it spark joy?</p>
+                <JoyPicker value={item.joy} disabled={busy === "save"} onChange={(joy) => patch({ joy })} />
+              </div>
+            )}
+
+            {item.status === "considering" && (
+              <div className="flex flex-col gap-3 rounded-2xl border border-border p-3.5">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-sm font-medium">
+                    {waitLabel(item.considerUntil)}
+                    {item.considerUntil && daysUntil(item.considerUntil) > 0 && (
+                      <span className="font-normal text-muted">
+                        {" "}
+                        · until {new Date(`${item.considerUntil}T00:00`).toLocaleDateString()}
+                      </span>
+                    )}
+                  </p>
+                  <Button size="sm" onClick={recheck} disabled={busy === "recheck"}>
+                    {busy === "recheck" ? <Spinner /> : <RefreshCw size={15} />}
+                    {busy === "recheck" ? "Checking…" : item.buyCheck ? "Check again" : "Check it"}
+                  </Button>
+                </div>
+                {item.buyCheck ? (
+                  <VerdictView check={item.buyCheck} items={allItems} onOpenItem={onOpenItem} />
+                ) : (
+                  <p className="text-sm text-muted">Compare it with what you own before you decide.</p>
+                )}
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-2">
               {item.status === "sold" ? (
                 <>
@@ -366,11 +500,13 @@ export function ItemDetailSheet({
               ) : (
                 <>
                   <Stat
-                    label={item.estimatedValue != null ? "Estimated value" : "Value (from MSRP/cost)"}
+                    label={item.status === "considering" ? "Price" : item.estimatedValue != null ? "Estimated value" : "Value (from MSRP/cost)"}
                     value={money(value == null ? null : value * item.quantity)}
                     sub={item.quantity > 1 ? `${item.quantity} × ${money(value)}` : undefined}
                   />
-                  {item.status === "for_sale" ? (
+                  {item.status === "considering" ? (
+                    <Stat label="Wishlist" value={waitLabel(item.considerUntil)} />
+                  ) : item.status === "for_sale" ? (
                     <Stat
                       label="Asking"
                       value={money(item.askingPrice == null ? null : item.askingPrice * item.quantity)}
@@ -385,11 +521,13 @@ export function ItemDetailSheet({
                   )}
                 </>
               )}
-              <Stat
-                label={item.quantity > 1 ? "Paid (each)" : "Paid"}
-                value={money(item.purchasePrice)}
-                sub={item.purchaseDate ?? undefined}
-              />
+              {item.status !== "considering" && (
+                <Stat
+                  label={item.quantity > 1 ? "Paid (each)" : "Paid"}
+                  value={money(item.purchasePrice)}
+                  sub={item.purchaseDate ?? undefined}
+                />
+              )}
               <Stat label={item.quantity > 1 ? "MSRP (each)" : "MSRP"} value={money(item.msrp)} />
             </div>
 
