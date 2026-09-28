@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart, Package, Plus, Search } from "lucide-react";
+import { Heart, Package, Plus, Search, Shirt } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { ItemStatus, ItemWithImages } from "@/db/schema";
 import { api, money } from "@/lib/client";
@@ -10,6 +10,7 @@ import { BuyCheckSheet } from "./buy-check-sheet";
 import { ChatDock } from "./chat-dock";
 import { ItemDetailSheet } from "./item-detail-sheet";
 import { daysUntil, waitLabel } from "./mindful";
+import { OutfitSheet } from "./outfit-sheet";
 import { StatsView } from "./stats-view";
 import { cn, StatusBadge } from "./ui";
 
@@ -31,6 +32,7 @@ export function InventoryApp() {
   const [category, setCategory] = useState("");
   const [adding, setAdding] = useState(false);
   const [checkingPurchase, setCheckingPurchase] = useState(false);
+  const [tryingOn, setTryingOn] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -88,21 +90,27 @@ export function InventoryApp() {
             </p>
           )}
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2 sm:flex-row-reverse sm:items-center">
-          <button
-            onClick={() => setAdding(true)}
-            className="flex h-11 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg shadow-sm hover:brightness-110"
-          >
-            <Plus size={18} /> Add item
-          </button>
-          <button
-            onClick={() => setCheckingPurchase(true)}
-            className="flex h-9 items-center gap-1.5 rounded-full bg-surface-2 px-3.5 text-sm font-medium hover:bg-border sm:h-11 sm:px-4"
-          >
-            <Heart size={16} className="text-accent" /> Before you buy
-          </button>
-        </div>
+        <button
+          onClick={() => setAdding(true)}
+          className="flex h-11 shrink-0 items-center gap-1.5 rounded-full bg-accent px-4 text-sm font-medium text-accent-fg shadow-sm hover:brightness-110"
+        >
+          <Plus size={18} /> Add item
+        </button>
       </header>
+      <div className="flex gap-2 pb-3">
+        <button
+          onClick={() => setCheckingPurchase(true)}
+          className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-surface-2 px-3.5 text-sm font-medium hover:bg-border sm:flex-none sm:px-4"
+        >
+          <Heart size={16} className="text-accent" /> Before you buy
+        </button>
+        <button
+          onClick={() => setTryingOn(true)}
+          className="flex h-10 flex-1 items-center justify-center gap-1.5 rounded-full bg-surface-2 px-3.5 text-sm font-medium hover:bg-border sm:flex-none sm:px-4"
+        >
+          <Shirt size={16} className="text-accent" /> Try it on
+        </button>
+      </div>
 
       <nav className="sticky top-0 z-30 -mx-4 bg-background/90 px-4 py-2 backdrop-blur" aria-label="Inventory sections">
         <div className="flex rounded-2xl bg-surface-2 p-1">
@@ -176,6 +184,9 @@ export function InventoryApp() {
         </>
       )}
 
+      {tryingOn && (
+        <OutfitSheet onClose={() => setTryingOn(false)} onSaved={upsert} onOpenItem={setSelectedId} />
+      )}
       {checkingPurchase && (
         <BuyCheckSheet
           onClose={() => setCheckingPurchase(false)}

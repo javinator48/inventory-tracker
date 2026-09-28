@@ -1,14 +1,19 @@
 "use client";
 
-import { Bot, Check, ChevronDown, SendHorizontal, Trash2 } from "lucide-react";
+import { Bot, Check, ChevronDown, ImagePlus, SendHorizontal, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
-import { api, jsonBody, money } from "@/lib/client";
+import { api, jsonBody, money, resizeImage } from "@/lib/client";
 import type { ItemWithImages } from "@/db/schema";
 import type { ChatEvent, ItemProposal } from "@/lib/types";
 import { Button, cn, Spinner } from "./ui";
 
-type Message = { role: "user" | "assistant"; content: string; proposals?: ItemProposal[] };
+type Message = { role: "user" | "assistant"; content: string; proposals?: ItemProposal[]; images?: string[] };
+type Attachment = { file: File; preview: string };
+
+const MAX_ATTACHMENTS = 4;
+/** Placeholder text the server stores for a photo-only message. */
+const PHOTO_ONLY = "(photo)";
 
 const SUGGESTIONS = [
   "What's my most valuable item?",
@@ -26,12 +31,22 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
   const [status, setStatus] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const photoInput = useRef<HTMLInputElement>(null);
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+  const [zoom, setZoom] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open || loaded) return;
-    api<(Omit<Message, "proposals"> & { proposals: ItemProposal[] | null })[]>("/api/chat")
+    api<(Pick<Message, "role" | "content"> & { proposals: ItemProposal[] | null; images: string[] | null })[]>("/api/chat")
       .then((rows) =>
-        setMessages(rows.map(({ role, content, proposals }) => ({ role, content, proposals: proposals ?? undefined }))),
+        setMessages(
+          rows.map(({ role, content, proposals, images }) => ({
+            role,
+            content,
+            proposals: proposals ?? undefined,
+            images: images ?? undefined,
+          })),
+        ),
       )
       .catch(() => {})
       .finally(() => setLoaded(true));
@@ -41,20 +56,65 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
   }, [messages, status, open]);
 
+  const attach = async (files: FileList | null) => {
+    const room = MAX_ATTACHMENTS - attachments.length;
+    const picked = [...(files ?? [])].slice(0, room);
+    const resized = await Promise.all(picked.map((f) => resizeImage(f)));
+    setAttachments((a) => [...a, ...resized.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+  };
+
+  const removeAttachment = (index: number) =>
+    setAttachments((a) => {
+      URL.revokeObjectURL(a[index].preview);
+      return a.filter((_, i) => i !== index);
+    });
+
   const send = async (text: string) => {
     const message = text.trim();
-    if (!message || streaming) return;
+    if ((!message && attachments.length === 0) || streaming) return;
     setOpen(true);
     setInput("");
     setStreaming(true);
+    setStatus(attachments.length ? "Uploading photos…" : "Thinking…");
+
+    let images: string[] = [];
+    try {
+      images = await Promise.all(
+        attachments.map(async (a) => {
+          const form = new FormData();
+          form.set("file", a.file);
+          return (await api<{ key: string }>("/api/uploads", { method: "POST", body: form })).key;
+        }),
+      );
+    } catch (err) {
+      setInput(text);
+      setStreaming(false);
+      setStatus(null);
+      alert(err instanceof Error ? err.message : "Couldn't upload the photos");
+      return;
+    }
+    attachments.forEach((a) => URL.revokeObjectURL(a.preview));
+    setAttachments([]);
     setStatus("Thinking…");
-    setMessages((m) => [...m, { role: "user", content: message }, { role: "assistant", content: "" }]);
+    setMessages((m) => [
+      ...m,
+      { role: "user", content: message || PHOTO_ONLY, images: images.length ? images : undefined },
+      { role: "assistant", content: "" },
+    ]);
 
     const appendToReply = (text: string) =>
       setMessages((m) => {
         const copy = m.slice();
         const last = copy[copy.length - 1];
         copy[copy.length - 1] = { ...last, content: last.content + text };
+        return copy;
+      });
+
+    const addImage = (key: string) =>
+      setMessages((m) => {
+        const copy = m.slice();
+        const last = copy[copy.length - 1];
+        copy[copy.length - 1] = { ...last, images: [...(last.images ?? []), key] };
         return copy;
       });
 
@@ -70,7 +130,7 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message }),
+        body: JSON.stringify({ message, images }),
       });
       if (!res.ok || !res.body) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null;
@@ -93,6 +153,7 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
           } else if (event.type === "status") setStatus(event.status);
           else if (event.type === "item_saved") onItemSaved?.(event.item);
           else if (event.type === "proposal") addProposal(event.proposal);
+          else if (event.type === "image") addImage(event.key);
           else if (event.type === "error") throw new Error(event.error);
         }
       }
@@ -147,10 +208,15 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
               )}
               {messages.map((m, i) =>
                 m.role === "user" ? (
-                  <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-sm text-accent-fg">
-                    {m.content}
+                  <div key={i} className="flex max-w-[85%] flex-col items-end gap-1.5 self-end">
+                    {m.images && <ImageStrip keys={m.images} onOpen={setZoom} small />}
+                    {m.content !== PHOTO_ONLY && (
+                      <div className="whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-sm text-accent-fg">
+                        {m.content}
+                      </div>
+                    )}
                   </div>
-                ) : m.content || m.proposals ? (
+                ) : m.content || m.proposals || m.images ? (
                   <div key={i} className="flex max-w-[95%] flex-col gap-2">
                     {m.content && (
                       <div className="chat-markdown text-sm leading-relaxed">
@@ -163,6 +229,7 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
                         </Markdown>
                       </div>
                     )}
+                    {m.images && <ImageStrip keys={m.images} onOpen={setZoom} />}
                     {m.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} onApplied={onItemSaved} />)}
                   </div>
                 ) : null,
@@ -175,14 +242,53 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
             </div>
           </>
         )}
+        {attachments.length > 0 && (
+          <div className="flex gap-2 border-t border-border px-3 pt-2">
+            {attachments.map((a, i) => (
+              <div key={a.preview} className="relative size-14 shrink-0 overflow-hidden rounded-lg bg-surface-2">
+                <img src={a.preview} alt="" className="size-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => removeAttachment(i)}
+                  className="absolute right-0.5 top-0.5 rounded-full bg-black/60 p-0.5 text-white"
+                  aria-label="Remove photo"
+                >
+                  <X size={12} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+        <input
+          ref={photoInput}
+          type="file"
+          accept="image/*"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            void attach(e.target.files);
+            e.target.value = "";
+          }}
+        />
         <form
-          className={cn("flex items-center gap-2 p-2", open && "border-t border-border")}
+          className={cn("flex items-center gap-2 p-2", open && attachments.length === 0 && "border-t border-border")}
           onSubmit={(e) => {
             e.preventDefault();
             void send(input);
           }}
         >
           {!open && <Bot size={20} className="ml-2 shrink-0 text-accent" />}
+          {open && (
+            <button
+              type="button"
+              onClick={() => photoInput.current?.click()}
+              disabled={streaming || attachments.length >= MAX_ATTACHMENTS}
+              className="rounded-full p-2 text-muted hover:bg-surface-2 disabled:opacity-40"
+              aria-label="Attach a photo"
+            >
+              <ImagePlus size={20} />
+            </button>
+          )}
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -192,7 +298,7 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
           />
           <button
             type="submit"
-            disabled={!input.trim() || streaming}
+            disabled={(!input.trim() && attachments.length === 0) || streaming}
             className="rounded-full bg-accent p-2.5 text-accent-fg disabled:opacity-40"
             aria-label="Send"
           >
@@ -200,6 +306,34 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
           </button>
         </form>
       </div>
+      {zoom && (
+        <button
+          type="button"
+          onClick={() => setZoom(null)}
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/85 p-4"
+          aria-label="Close image"
+        >
+          <img src={`/api/images/${zoom}`} alt="" className="max-h-full max-w-full rounded-xl object-contain" />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/** Photos in a message: small thumbnails for attachments, larger for try-on images. */
+function ImageStrip({ keys, onOpen, small }: { keys: string[]; onOpen: (key: string) => void; small?: boolean }) {
+  return (
+    <div className={cn("flex flex-wrap gap-2", small && "justify-end")}>
+      {keys.map((key) => (
+        <button
+          key={key}
+          type="button"
+          onClick={() => onOpen(key)}
+          className={cn("overflow-hidden rounded-xl bg-surface-2", small ? "size-20" : "w-full max-w-72")}
+        >
+          <img src={`/api/images/${key}`} alt="" className={cn("object-cover", small ? "size-full" : "w-full")} />
+        </button>
+      ))}
     </div>
   );
 }

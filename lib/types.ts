@@ -35,8 +35,18 @@ export type ChatEvent =
   | { type: "status"; status: string }
   | { type: "item_saved"; item: ItemWithImages }
   | { type: "proposal"; proposal: ItemProposal }
+  /** A try-on image the assistant made (storage key). */
+  | { type: "image"; key: string }
   | { type: "done" }
   | { type: "error"; error: string };
+
+/** Outfit ideas pairing pieces the user may buy with things they own. */
+export type OutfitSuggestion = {
+  newItems: { name: string; category: string | null; description: string }[];
+  outfits: { title: string; occasion: string; why: string; ownedItemIds: number[]; newItemIndexes: number[] }[];
+  overlaps: { newItemIndex: number; ownedItemId: number; note: string }[];
+  advice: string;
+};
 
 /** An edit the assistant suggested; saved only when the user taps Apply. */
 export type ItemProposal = {

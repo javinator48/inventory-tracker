@@ -14,6 +14,8 @@ import type { ChatEvent, ItemProposal } from "@/lib/types";
 import { checkPurchase, purchaseCandidateSchema } from "./buy-check";
 import { AiNotConfiguredError, aiConfigured, FALLBACK_PARAMS, getClient, MODEL, WEB_SEARCH_TOOL } from "./client";
 import { KONMARI_GUIDANCE } from "./konmari";
+import { newPieceSchema, suggestOutfits, tryOnInputSchema, tryOnOutfit } from "./outfits";
+import { imageExists, setMePhoto } from "@/lib/settings";
 
 const searchItems = betaZodTool({
   name: "search_items",
@@ -198,6 +200,63 @@ function checkPurchaseTool(ctx: TurnContext) {
   });
 }
 
+const setMePhotoTool = betaZodTool({
+  name: "set_me_photo",
+  description:
+    "Save a photo the user attached as their photo for try-ons. Only when they say it's a photo of themselves they want to use. Replaces any earlier one.",
+  inputSchema: z.object({ imageKey: z.string().describe("Key from '(Photos attached: ...)'") }),
+  run: async ({ imageKey }) => {
+    if (!(await imageExists(imageKey))) return `No attached photo with key ${imageKey}`;
+    await setMePhoto(imageKey);
+    return "Saved as their try-on photo.";
+  },
+});
+
+const suggestOutfitsTool = betaZodTool({
+  name: "suggest_outfits",
+  description:
+    "Pair clothes the user is thinking of buying with clothes they own. Pieces are attached photos (by key) and/or names. Returns outfits (owned item ids + indexes into the new pieces), near-duplicates of things they own, and advice.",
+  inputSchema: z.object({
+    pieces: z
+      .array(z.object({ imageKey: z.string().optional(), name: z.string().optional() }))
+      .min(1)
+      .max(4),
+  }),
+  run: async ({ pieces }) => {
+    const parsed = z.array(newPieceSchema).safeParse(pieces);
+    if (!parsed.success) return `Invalid pieces: ${validationMessage(parsed.error)}`;
+    const { suggestion, items } = await suggestOutfits(parsed.data);
+    const names = Object.fromEntries(items.map((i) => [i.id, i.name]));
+    return JSON.stringify({ ...suggestion, ownedItemNames: names });
+  },
+});
+
+function tryOnTool(emit: (event: ChatEvent) => void) {
+  return betaZodTool({
+    name: "try_on_outfit",
+    description:
+      "Create an image of the user wearing an outfit, from their saved photo (Google Gemini makes it; takes up to a minute). Use owned item ids and the new pieces (with their attached photo keys when available). The image is shown to the user automatically.",
+    inputSchema: z.object({
+      title: z.string().describe("Short description of the look"),
+      ownedItemIds: z.array(z.number().int()).max(8),
+      newItems: z
+        .array(z.object({ imageKey: z.string().optional(), name: z.string().describe("Name and short description") }))
+        .max(4),
+    }),
+    run: async (input) => {
+      const parsed = tryOnInputSchema.safeParse(input);
+      if (!parsed.success) return `Invalid outfit: ${validationMessage(parsed.error)}`;
+      try {
+        const key = await tryOnOutfit(parsed.data);
+        emit({ type: "image", key });
+        return "The try-on image is now shown to the user. Don't describe it in detail; you can't see it.";
+      } catch (err) {
+        return `Couldn't create the image: ${err instanceof Error ? err.message : "unknown error"}`;
+      }
+    },
+  });
+}
+
 /** Image types the Claude API accepts, and its per-image size limit (base64 adds a third). */
 const VIEWABLE_TYPES = new Set(["image/jpeg", "image/png", "image/gif", "image/webp"]);
 const MAX_VIEWABLE_BYTES = 3_700_000;
@@ -286,6 +345,8 @@ To change an existing item (fix a field, update an estimate, mark it for sale or
 
 Mindful buying: the user wants everything they buy to be meaningful and to avoid buying things that duplicate what they already own. Whenever they mention wanting, eyeing or being about to buy something, call check_purchase first (identify the product with web search if needed), then answer from its result: the verdict, the items they already own that overlap (by name), and one or two of the reflection questions. Offer to add it to their wishlist with a cooling-off period (add_item with status "considering"; considerUntil defaults to a week, and the check is saved with it). If they bought it, add it as owned instead. You can also help them rate existing items' joy with propose_update, and suggest letting go of items that don't spark joy.
 
+Outfits and try-ons: the user can attach photos to messages (you see them, and their keys are listed as "(Photos attached: ...)"). When they share clothes they're thinking of buying, or ask what to wear with something, call suggest_outfits with the photos' keys and/or names, then summarise the best 2-3 outfits by the names of the pieces, and mention any near-duplicates of what they own. Offer to show them wearing an outfit; when they want that, call try_on_outfit. It needs their saved photo: if they don't have one, ask them to attach a photo of themselves and confirm it's them, then call set_me_photo. Never comment on their body or appearance, only on the clothes.
+
 ${KONMARI_GUIDANCE}
 
 Current snapshot: ${stats.counts.owned} owned, ${stats.counts.forSale} for sale, ${stats.counts.sold} sold, ${stats.counts.considering} on the wishlist. Total estimated value of owned and for-sale items: $${stats.totalValue}.`;
@@ -297,6 +358,9 @@ const TOOL_STATUS: Record<string, string> = {
   add_item_image: "Adding the photo…",
   propose_update: "Preparing the change…",
   check_purchase: "Comparing with what you own…",
+  suggest_outfits: "Going through your wardrobe…",
+  try_on_outfit: "Dressing you up…",
+  set_me_photo: "Saving your photo…",
 };
 
 /** Streams an assistant reply as ChatEvents. Returns the full reply text. */
@@ -317,6 +381,9 @@ export async function runAssistant(history: BetaMessageParam[], emit: (event: Ch
       getItemDetails,
       getInventoryStats,
       checkPurchaseTool(ctx),
+      suggestOutfitsTool,
+      tryOnTool(emit),
+      setMePhotoTool,
       addItemTool(emit, ctx),
       proposeUpdateTool(emit),
       findImages,
