@@ -6,7 +6,7 @@ import { jsonError } from "@/lib/api";
 import { describeAiError } from "@/lib/ai/client";
 import { runAssistant } from "@/lib/ai/assistant";
 import { getDb } from "@/lib/db";
-import type { ChatEvent } from "@/lib/types";
+import type { ChatEvent, ItemProposal } from "@/lib/types";
 
 export const maxDuration = 300;
 
@@ -47,10 +47,18 @@ export async function POST(req: NextRequest) {
   const encoder = new TextEncoder();
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
-      const emit = (event: ChatEvent) => controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      const proposals: ItemProposal[] = [];
+      const emit = (event: ChatEvent) => {
+        if (event.type === "proposal") proposals.push(event.proposal);
+        controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
+      };
       try {
         const reply = await runAssistant(history, emit);
-        if (reply.trim()) await db.insert(chatMessages).values({ role: "assistant", content: reply });
+        if (reply.trim() || proposals.length) {
+          await db
+            .insert(chatMessages)
+            .values({ role: "assistant", content: reply, proposals: proposals.length ? proposals : null });
+        }
         emit({ type: "done" });
       } catch (err) {
         console.error("chat failed", err);

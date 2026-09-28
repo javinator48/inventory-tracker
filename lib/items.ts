@@ -2,14 +2,14 @@ import "server-only";
 import { and, desc, eq, inArray, like, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { getDb } from "@/lib/db";
-import { deleteImage } from "@/lib/storage";
+import { copyImage, deleteImage } from "@/lib/storage";
 import { ITEM_STATUSES, itemImages, items, type Item, type ItemStatus, type ItemWithImages } from "@/db/schema";
 
 const optionalText = z.string().trim().max(5000).nullish().transform((v) => v || null);
 const optionalMoney = z.coerce.number().min(0).nullish().or(z.literal("").transform(() => null));
 const optionalDate = z.string().trim().nullish().transform((v) => v || null);
 
-export const itemInputSchema = z.object({
+const itemFieldsSchema = z.object({
   name: z.string().trim().min(1, "Name is required").max(300),
   brand: optionalText,
   model: optionalText,
@@ -17,10 +17,10 @@ export const itemInputSchema = z.object({
   description: optionalText,
   upc: optionalText,
   condition: optionalText,
-  quantity: z.coerce.number().int().min(1).default(1),
+  quantity: z.coerce.number().int().min(1),
   location: optionalText,
   notes: optionalText,
-  status: z.enum(ITEM_STATUSES).default("owned"),
+  status: z.enum(ITEM_STATUSES),
   purchasePrice: optionalMoney,
   purchaseDate: optionalDate,
   msrp: optionalMoney,
@@ -31,7 +31,13 @@ export const itemInputSchema = z.object({
   soldPlatform: optionalText,
 });
 
-export const itemPatchSchema = itemInputSchema.partial();
+export const itemInputSchema = itemFieldsSchema.extend({
+  quantity: itemFieldsSchema.shape.quantity.default(1),
+  status: itemFieldsSchema.shape.status.default("owned"),
+});
+
+// Built from the default-free fields: a partial update must not reset quantity or status.
+export const itemPatchSchema = itemFieldsSchema.partial();
 export type ItemInput = z.infer<typeof itemInputSchema>;
 
 const now = () => new Date().toISOString();
@@ -117,6 +123,42 @@ export async function updateItem(id: number, data: Partial<ItemInput>) {
   return row;
 }
 
+export const saleSchema = z.object({
+  /** How many units were sold; defaults to all of them. */
+  quantity: z.coerce.number().int().min(1).optional(),
+  soldPrice: optionalMoney,
+  soldDate: optionalDate,
+  soldPlatform: optionalText,
+});
+
+/**
+ * Marks units of an item as sold. Selling only some of them splits the item: the original
+ * keeps the unsold units and a sold copy (with copies of its photos) records the sale.
+ */
+export async function sellUnits(id: number, sale: z.infer<typeof saleSchema>) {
+  const existing = await getItem(id);
+  if (!existing) return null;
+  const { quantity = existing.quantity, ...saleFields } = sale;
+  if (quantity >= existing.quantity) {
+    await updateItem(id, { status: "sold", ...saleFields });
+    return { sold: (await getItem(id))!, remaining: null };
+  }
+
+  const db = await getDb();
+  await db.update(items).set({ quantity: existing.quantity - quantity, updatedAt: now() }).where(eq(items.id, id));
+  // Parsing keeps only the editable fields, dropping id, timestamps and images.
+  const copy = await createItem(itemInputSchema.parse({ ...existing, ...saleFields, quantity, status: "sold" }));
+  for (const img of existing.images) {
+    await db.insert(itemImages).values({
+      itemId: copy.id,
+      path: await copyImage(img.path),
+      source: img.source,
+      isPrimary: img.isPrimary,
+    });
+  }
+  return { sold: (await getItem(copy.id))!, remaining: (await getItem(id))! };
+}
+
 export async function deleteItem(id: number) {
   const db = await getDb();
   const images = await db.select().from(itemImages).where(eq(itemImages.itemId, id));
@@ -184,12 +226,21 @@ export async function getStats() {
     byCategory.set(key, entry);
   }
 
+  const units = (list: Item[]) => list.reduce((s, i) => s + i.quantity, 0);
+
   return {
+    /** Number of items (rows); an item with quantity 3 counts once. */
     counts: {
       owned: all.filter((i) => i.status === "owned").length,
       forSale: forSale.length,
       sold: sold.length,
-      totalUnits: held.reduce((s, i) => s + i.quantity, 0),
+      totalUnits: units(held),
+    },
+    /** Number of units, i.e. items weighted by quantity. */
+    units: {
+      owned: units(all.filter((i) => i.status === "owned")),
+      forSale: units(forSale),
+      sold: units(sold),
     },
     /** Estimated value of everything not yet sold (owned + for sale). */
     totalValue: round(held.reduce((s, i) => s + itemValue(i), 0)),
@@ -207,7 +258,7 @@ export async function getStats() {
       .map(([category, v]) => ({ category, value: round(v.value), count: v.count }))
       .sort((a, b) => b.value - a.value),
     topItems: held
-      .map((i) => ({ id: i.id, name: i.name, status: i.status, value: round(itemValue(i)) }))
+      .map((i) => ({ id: i.id, name: i.name, status: i.status, quantity: i.quantity, value: round(itemValue(i)) }))
       .sort((a, b) => b.value - a.value)
       .slice(0, 10),
   };

@@ -53,6 +53,12 @@ export async function deleteImage(key: string) {
   await fs.rm(resolveKey(key), { force: true });
 }
 
+/** Duplicates a stored image, for an item copied from another one. */
+export async function copyImage(key: string): Promise<string> {
+  const { data, contentType } = await readImage(key);
+  return saveImage(data, contentType);
+}
+
 /** Downloads a remote image so the item doesn't depend on the source staying online. */
 export async function downloadImage(url: string): Promise<{ data: Buffer; contentType: string }> {
   const parsed = new URL(url);

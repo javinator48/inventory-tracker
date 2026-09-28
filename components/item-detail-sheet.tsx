@@ -31,7 +31,7 @@ export function ItemDetailSheet({
   const [estimate, setEstimate] = useState<ValueEstimate | null>(null);
   const [imageIndex, setImageIndex] = useState(0);
   const [askingPrice, setAskingPrice] = useState("");
-  const [sale, setSale] = useState({ price: "", date: "", platform: "" });
+  const [sale, setSale] = useState({ quantity: "", price: "", date: "", platform: "" });
   const photoInput = useRef<HTMLInputElement>(null);
 
   if (!item) return null;
@@ -51,6 +51,23 @@ export function ItemDetailSheet({
   const patch = (data: Record<string, unknown>) =>
     run("save", async () => {
       onChanged(await api<ItemWithImages>(`/api/items/${item.id}`, jsonBody(data, "PATCH")));
+      setMode("view");
+    });
+
+  const sell = () =>
+    run("save", async () => {
+      const { sold, remaining } = await api<{ sold: ItemWithImages; remaining: ItemWithImages | null }>(
+        `/api/items/${item.id}/sell`,
+        jsonBody({
+          quantity: Number(sale.quantity) || item.quantity,
+          soldPrice: sale.price || null,
+          soldDate: sale.date || null,
+          soldPlatform: sale.platform || null,
+        }),
+      );
+      // A partial sale splits off a new sold item; stay on the unsold remainder.
+      onChanged(sold);
+      if (remaining) onChanged(remaining);
       setMode("view");
     });
 
@@ -112,9 +129,7 @@ export function ItemDetailSheet({
           variant="primary"
           className="flex-[2]"
           disabled={busy === "save"}
-          onClick={() =>
-            patch({ status: "sold", soldPrice: sale.price || null, soldDate: sale.date || null, soldPlatform: sale.platform || null })
-          }
+          onClick={sell}
         >
           Mark as sold
         </Button>
@@ -138,7 +153,12 @@ export function ItemDetailSheet({
             variant="primary"
             className="flex-1"
             onClick={() => {
-              setSale({ price: String(item.askingPrice ?? ""), date: new Date().toISOString().slice(0, 10), platform: "" });
+              setSale({
+                quantity: String(item.quantity),
+                price: String(item.askingPrice ?? ""),
+                date: new Date().toISOString().slice(0, 10),
+                platform: "",
+              });
               setMode("sell");
             }}
           >
@@ -183,7 +203,7 @@ export function ItemDetailSheet({
         )}
 
         {mode === "list" && (
-          <Field label="Asking price">
+          <Field label={item.quantity > 1 ? `Asking price (each, ×${item.quantity})` : "Asking price"}>
             <Input
               type="number"
               inputMode="decimal"
@@ -198,7 +218,20 @@ export function ItemDetailSheet({
 
         {mode === "sell" && (
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Sold for">
+            {item.quantity > 1 && (
+              <Field label={`How many sold (of ${item.quantity})`} className="col-span-2">
+                <Input
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={item.quantity}
+                  step={1}
+                  value={sale.quantity}
+                  onChange={(e) => setSale({ ...sale, quantity: e.target.value })}
+                />
+              </Field>
+            )}
+            <Field label={item.quantity > 1 ? "Sold for (each)" : "Sold for"}>
               <Input
                 type="number"
                 inputMode="decimal"
@@ -319,7 +352,11 @@ export function ItemDetailSheet({
             <div className="grid grid-cols-2 gap-2">
               {item.status === "sold" ? (
                 <>
-                  <Stat label="Sold for" value={money(item.soldPrice)} />
+                  <Stat
+                    label="Sold for"
+                    value={money(item.soldPrice == null ? null : item.soldPrice * item.quantity)}
+                    sub={item.quantity > 1 ? `${item.quantity} × ${money(item.soldPrice)}` : undefined}
+                  />
                   <Stat
                     label="Profit"
                     value={soldProfit == null ? "—" : signedMoney(soldProfit)}
@@ -334,7 +371,11 @@ export function ItemDetailSheet({
                     sub={item.quantity > 1 ? `${item.quantity} × ${money(value)}` : undefined}
                   />
                   {item.status === "for_sale" ? (
-                    <Stat label="Asking" value={money(item.askingPrice)} />
+                    <Stat
+                      label="Asking"
+                      value={money(item.askingPrice == null ? null : item.askingPrice * item.quantity)}
+                      sub={item.quantity > 1 ? `${item.quantity} × ${money(item.askingPrice)}` : undefined}
+                    />
                   ) : (
                     <Stat
                       label="Gain vs. cost"
@@ -344,8 +385,12 @@ export function ItemDetailSheet({
                   )}
                 </>
               )}
-              <Stat label="Paid" value={money(item.purchasePrice)} sub={item.purchaseDate ?? undefined} />
-              <Stat label="MSRP" value={money(item.msrp)} />
+              <Stat
+                label={item.quantity > 1 ? "Paid (each)" : "Paid"}
+                value={money(item.purchasePrice)}
+                sub={item.purchaseDate ?? undefined}
+              />
+              <Stat label={item.quantity > 1 ? "MSRP (each)" : "MSRP"} value={money(item.msrp)} />
             </div>
 
             {item.status !== "sold" && (
@@ -392,7 +437,7 @@ export function ItemDetailSheet({
               {(
                 [
                   ["Condition", item.condition],
-                  ["Quantity", item.quantity > 1 ? String(item.quantity) : null],
+                  ["Quantity", String(item.quantity)],
                   ["Location", item.location],
                   ["Barcode", item.upc],
                   ["Listed", item.listedAt ? new Date(item.listedAt).toLocaleDateString() : null],

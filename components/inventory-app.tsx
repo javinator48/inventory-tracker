@@ -79,7 +79,7 @@ export function InventoryApp() {
           <p className="tabular text-3xl font-semibold">{stats ? money(stats.totalValue, { whole: true }) : "—"}</p>
           {stats && (
             <p className="text-xs text-muted">
-              {stats.counts.owned + stats.counts.forSale} items
+              {stats.counts.totalUnits} {stats.counts.totalUnits === 1 ? "unit" : "units"}
               {stats.counts.forSale > 0 && ` · ${money(stats.forSaleValue, { whole: true })} listed`}
             </p>
           )}
@@ -184,7 +184,7 @@ export function InventoryApp() {
           void api<InventoryStats>("/api/stats").then(setStats);
         }}
       />
-      <ChatDock />
+      <ChatDock onItemSaved={upsert} />
     </div>
   );
 }
@@ -212,8 +212,8 @@ function ItemCard({ item, onClick }: { item: ItemWithImages; onClick: () => void
         <p className="line-clamp-2 text-sm font-medium leading-snug">{item.name}</p>
         <div className="flex items-center justify-between gap-2">
           <span className="tabular text-sm font-semibold">
-            {money(price == null ? null : price * (item.status === "sold" ? 1 : item.quantity), { whole: true })}
-            {item.quantity > 1 && item.status !== "sold" && <span className="font-normal text-muted"> · ×{item.quantity}</span>}
+            {money(price == null ? null : price * item.quantity, { whole: true })}
+            {item.quantity > 1 && <span className="font-normal text-muted"> · ×{item.quantity}</span>}
           </span>
           {item.status !== "owned" && <StatusBadge status={item.status} />}
         </div>

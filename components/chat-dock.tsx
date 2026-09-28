@@ -1,13 +1,14 @@
 "use client";
 
-import { Bot, ChevronDown, SendHorizontal, Trash2 } from "lucide-react";
+import { Bot, Check, ChevronDown, SendHorizontal, Trash2 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
-import { api } from "@/lib/client";
-import type { ChatEvent } from "@/lib/types";
-import { cn, Spinner } from "./ui";
+import { api, jsonBody, money } from "@/lib/client";
+import type { ItemWithImages } from "@/db/schema";
+import type { ChatEvent, ItemProposal } from "@/lib/types";
+import { Button, cn, Spinner } from "./ui";
 
-type Message = { role: "user" | "assistant"; content: string };
+type Message = { role: "user" | "assistant"; content: string; proposals?: ItemProposal[] };
 
 const SUGGESTIONS = [
   "What's my most valuable item?",
@@ -17,7 +18,7 @@ const SUGGESTIONS = [
 ];
 
 /** Inventory assistant: a bar docked at the bottom that expands into a chat panel. */
-export function ChatDock() {
+export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages) => void }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
@@ -28,8 +29,10 @@ export function ChatDock() {
 
   useEffect(() => {
     if (!open || loaded) return;
-    api<Message[]>("/api/chat")
-      .then((rows) => setMessages(rows.map(({ role, content }) => ({ role, content }))))
+    api<(Omit<Message, "proposals"> & { proposals: ItemProposal[] | null })[]>("/api/chat")
+      .then((rows) =>
+        setMessages(rows.map(({ role, content, proposals }) => ({ role, content, proposals: proposals ?? undefined }))),
+      )
       .catch(() => {})
       .finally(() => setLoaded(true));
   }, [open, loaded]);
@@ -52,6 +55,14 @@ export function ChatDock() {
         const copy = m.slice();
         const last = copy[copy.length - 1];
         copy[copy.length - 1] = { ...last, content: last.content + text };
+        return copy;
+      });
+
+    const addProposal = (proposal: ItemProposal) =>
+      setMessages((m) => {
+        const copy = m.slice();
+        const last = copy[copy.length - 1];
+        copy[copy.length - 1] = { ...last, proposals: [...(last.proposals ?? []), proposal] };
         return copy;
       });
 
@@ -80,6 +91,8 @@ export function ChatDock() {
             setStatus(null);
             appendToReply(event.text);
           } else if (event.type === "status") setStatus(event.status);
+          else if (event.type === "item_saved") onItemSaved?.(event.item);
+          else if (event.type === "proposal") addProposal(event.proposal);
           else if (event.type === "error") throw new Error(event.error);
         }
       }
@@ -122,7 +135,7 @@ export function ChatDock() {
             <div ref={scrollRef} className="flex flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
               {messages.length === 0 && loaded && (
                 <div className="flex flex-col gap-2 py-4">
-                  <p className="text-sm text-muted">Ask anything about your stuff. I can look through your inventory and search the web for prices.</p>
+                  <p className="text-sm text-muted">Ask anything about your stuff. I can look through your inventory, add new items, and search the web for prices.</p>
                   <div className="flex flex-wrap gap-2">
                     {SUGGESTIONS.map((s) => (
                       <button key={s} onClick={() => send(s)} className="rounded-full bg-surface-2 px-3 py-1.5 text-sm hover:bg-border">
@@ -137,15 +150,20 @@ export function ChatDock() {
                   <div key={i} className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl rounded-br-md bg-accent px-3.5 py-2 text-sm text-accent-fg">
                     {m.content}
                   </div>
-                ) : m.content ? (
-                  <div key={i} className="chat-markdown max-w-[95%] text-sm leading-relaxed">
-                    <Markdown
-                      components={{
-                        a: (props) => <a {...props} target="_blank" rel="noreferrer" className="text-accent underline" />,
-                      }}
-                    >
-                      {m.content}
-                    </Markdown>
+                ) : m.content || m.proposals ? (
+                  <div key={i} className="flex max-w-[95%] flex-col gap-2">
+                    {m.content && (
+                      <div className="chat-markdown text-sm leading-relaxed">
+                        <Markdown
+                          components={{
+                            a: (props) => <a {...props} target="_blank" rel="noreferrer" className="text-accent underline" />,
+                          }}
+                        >
+                          {m.content}
+                        </Markdown>
+                      </div>
+                    )}
+                    {m.proposals?.map((p) => <ProposalCard key={p.id} proposal={p} onApplied={onItemSaved} />)}
                   </div>
                 ) : null,
               )}
@@ -181,6 +199,103 @@ export function ChatDock() {
             {streaming ? <Spinner /> : <SendHorizontal size={18} />}
           </button>
         </form>
+      </div>
+    </div>
+  );
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  name: "Name",
+  brand: "Brand",
+  model: "Model",
+  category: "Category",
+  description: "Description",
+  upc: "UPC",
+  condition: "Condition",
+  quantity: "Quantity",
+  location: "Location",
+  notes: "Notes",
+  status: "Status",
+  purchasePrice: "Purchase price",
+  purchaseDate: "Purchase date",
+  msrp: "MSRP",
+  estimatedValue: "Estimated value",
+  askingPrice: "Asking price",
+  soldPrice: "Sold price",
+  soldDate: "Sold date",
+  soldPlatform: "Sold on",
+};
+const MONEY_FIELDS = new Set(["purchasePrice", "msrp", "estimatedValue", "askingPrice", "soldPrice"]);
+const STATUS_LABELS: Record<string, string> = { owned: "Owned", for_sale: "For sale", sold: "Sold" };
+
+function formatValue(field: string, value: string | number | null) {
+  if (value == null || value === "") return "—";
+  if (MONEY_FIELDS.has(field)) return money(Number(value));
+  if (field === "status") return STATUS_LABELS[value] ?? String(value);
+  return String(value);
+}
+
+/** An edit suggested by the assistant; nothing is saved until the user taps Apply. */
+function ProposalCard({ proposal, onApplied }: { proposal: ItemProposal; onApplied?: (item: ItemWithImages) => void }) {
+  const [state, setState] = useState<"pending" | "saving" | "applied" | "dismissed">("pending");
+  const [error, setError] = useState<string | null>(null);
+
+  // Cards come back with the chat history; show ones whose values are already saved as done.
+  useEffect(() => {
+    api<ItemWithImages>(`/api/items/${proposal.itemId}`)
+      .then((item) => {
+        const current = item as unknown as Record<string, unknown>;
+        if (proposal.changes.every((c) => (current[c.field] ?? null) === c.to)) setState("applied");
+      })
+      .catch(() => {});
+  }, [proposal]);
+
+  const apply = async () => {
+    setState("saving");
+    setError(null);
+    try {
+      const item = await api<ItemWithImages>(`/api/items/${proposal.itemId}`, jsonBody(proposal.patch, "PATCH"));
+      onApplied?.(item);
+      setState("applied");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Couldn't save");
+      setState("pending");
+    }
+  };
+
+  return (
+    <div className={cn("rounded-2xl border border-border bg-surface-2/50 p-3 text-sm", state === "dismissed" && "opacity-60")}>
+      <p className="mb-2 font-medium">Update {proposal.itemName}</p>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
+        {proposal.changes.map((c) => (
+          <div key={c.field} className="contents">
+            <dt className="text-muted">{FIELD_LABELS[c.field] ?? c.field}</dt>
+            <dd className="min-w-0 break-words">
+              <span className="text-muted line-through">{formatValue(c.field, c.from)}</span>
+              {" → "}
+              <span className="font-medium">{formatValue(c.field, c.to)}</span>
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {error && <p className="mt-2 text-bad">{error}</p>}
+      <div className="mt-3 flex items-center gap-2">
+        {state === "applied" ? (
+          <span className="flex items-center gap-1 text-good">
+            <Check size={16} /> Saved
+          </span>
+        ) : state === "dismissed" ? (
+          <span className="text-muted">Dismissed</span>
+        ) : (
+          <>
+            <Button variant="primary" size="sm" onClick={apply} disabled={state === "saving"}>
+              {state === "saving" ? <Spinner /> : <Check size={16} />} Apply
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setState("dismissed")} disabled={state === "saving"}>
+              Dismiss
+            </Button>
+          </>
+        )}
       </div>
     </div>
   );

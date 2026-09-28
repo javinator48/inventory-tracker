@@ -22,7 +22,7 @@ export function StatsView({ stats, onOpenItem }: { stats: InventoryStats | null;
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
         <Tile label="Total estimated value" value={money(stats.totalValue, { whole: true })} sub={`${stats.counts.totalUnits} units owned or for sale`} hero />
-        <Tile label="Listed for sale" value={money(stats.forSaleValue, { whole: true })} sub={`${stats.counts.forSale} item${stats.counts.forSale === 1 ? "" : "s"}`} />
+        <Tile label="Listed for sale" value={money(stats.forSaleValue, { whole: true })} sub={`${stats.units.forSale} unit${stats.units.forSale === 1 ? "" : "s"}`} />
         <Tile label="Paid (cost basis)" value={money(stats.costBasis, { whole: true })} sub="Items with a purchase price" />
         <Tile
           label="Unrealized gain"
@@ -30,7 +30,7 @@ export function StatsView({ stats, onOpenItem }: { stats: InventoryStats | null;
           tone={toneOf(stats.unrealizedGain)}
           sub="Value minus cost"
         />
-        <Tile label="Sold revenue" value={money(stats.soldRevenue, { whole: true })} sub={`${stats.counts.sold} item${stats.counts.sold === 1 ? "" : "s"} sold`} />
+        <Tile label="Sold revenue" value={money(stats.soldRevenue, { whole: true })} sub={`${stats.units.sold} unit${stats.units.sold === 1 ? "" : "s"} sold`} />
         <Tile
           label="Realized profit"
           value={signedMoney(stats.realizedProfit)}
@@ -106,7 +106,10 @@ export function StatsView({ stats, onOpenItem }: { stats: InventoryStats | null;
                   className="flex w-full items-center gap-3 rounded-lg px-1 py-2 text-left text-sm hover:bg-surface-2"
                 >
                   <span className="tabular w-5 text-muted">{i + 1}</span>
-                  <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {item.name}
+                    {item.quantity > 1 && <span className="text-muted"> ×{item.quantity}</span>}
+                  </span>
                   <span className="tabular font-medium">{money(item.value, { whole: true })}</span>
                 </button>
               </li>

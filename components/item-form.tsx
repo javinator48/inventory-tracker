@@ -83,6 +83,8 @@ export function ItemForm({
     onChange: (e: { target: { value: string } }) => onChange({ ...values, [f]: e.target.value }),
   });
   const moneyProps = { type: "number", inputMode: "decimal" as const, min: 0, step: "0.01", placeholder: "0.00" };
+  // Prices are per unit; say so once there's more than one.
+  const each = Number(values.quantity) > 1 ? " (each)" : "";
 
   return (
     <div className="grid grid-cols-2 gap-3">
@@ -112,27 +114,34 @@ export function ItemForm({
         </datalist>
       </Field>
 
-      <Field label="Purchase price">
+      <Field label="Quantity">
+        <Input {...bind("quantity")} type="number" inputMode="numeric" min={1} step={1} />
+      </Field>
+      <Field label="Location">
+        <Input {...bind("location")} placeholder="Garage, shelf 2" />
+      </Field>
+
+      <Field label={`Purchase price${each}`}>
         <Input {...bind("purchasePrice")} {...moneyProps} />
       </Field>
       <Field label="Purchase date">
         <Input {...bind("purchaseDate")} type="date" />
       </Field>
-      <Field label="MSRP">
+      <Field label={`MSRP${each}`}>
         <Input {...bind("msrp")} {...moneyProps} />
       </Field>
-      <Field label="Estimated value">
+      <Field label={`Estimated value${each}`}>
         <Input {...bind("estimatedValue")} {...moneyProps} />
       </Field>
 
       {status === "for_sale" && (
-        <Field label="Asking price" className="col-span-2">
+        <Field label={`Asking price${each}`} className="col-span-2">
           <Input {...bind("askingPrice")} {...moneyProps} />
         </Field>
       )}
       {status === "sold" && (
         <>
-          <Field label="Sold price">
+          <Field label={`Sold price${each}`}>
             <Input {...bind("soldPrice")} {...moneyProps} />
           </Field>
           <Field label="Sold date">
@@ -144,12 +153,6 @@ export function ItemForm({
         </>
       )}
 
-      <Field label="Quantity">
-        <Input {...bind("quantity")} type="number" inputMode="numeric" min={1} step={1} />
-      </Field>
-      <Field label="Location">
-        <Input {...bind("location")} placeholder="Garage, shelf 2" />
-      </Field>
       <Field label="Barcode (UPC)" className="col-span-2">
         <Input {...bind("upc")} inputMode="numeric" />
       </Field>
