@@ -76,11 +76,15 @@ ${pieces}`;
     }),
     signal: AbortSignal.timeout(120_000),
   });
-  const body = (await res.json().catch(() => null)) as Record<string, unknown> | null;
+  const body = (await res.json().catch(() => null)) as unknown;
   if (!res.ok) {
-    const message = (body?.error as { message?: string } | undefined)?.message;
+    // Errors come as { error } or, e.g. for billing, as [{ error }].
+    const error = (Array.isArray(body) ? body[0] : body) as { error?: { message?: string } } | null;
+    const message = error?.error?.message?.trim();
     if (res.status === 401 || res.status === 403) throw new Error("The Gemini API key was rejected");
-    if (res.status === 429) throw new Error("Gemini is rate limited, try again in a minute");
+    if (res.status === 402) throw new Error("Gemini: your AI Studio prepaid credits are used up. Add credits at https://ai.studio/projects");
+    // 429 also covers free-tier keys with zero quota for the image model, so pass Gemini's reason through.
+    if (res.status === 429) throw new Error(message ? `Gemini: ${message}` : "Gemini is rate limited, try again in a minute");
     throw new Error(`Gemini image error (${res.status})${message ? `: ${message}` : ""}`);
   }
   const image = findImage(body);
