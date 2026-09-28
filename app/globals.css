@@ -1,0 +1,102 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f6f6f4;
+  --surface: #ffffff;
+  --surface-2: #efefec;
+  --border: #e2e1dc;
+  --foreground: #0f0f0e;
+  --muted: #5d5c57;
+  --accent: #2a78d6;
+  --accent-fg: #ffffff;
+  --good: #1b7f3a;
+  --bad: #c43b3a;
+  --warn: #a86a00;
+  --series-1: #2a78d6;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #121211;
+    --surface: #1c1c1b;
+    --surface-2: #262625;
+    --border: #33332f;
+    --foreground: #f4f4f1;
+    --muted: #a8a7a0;
+    --accent: #3987e5;
+    --accent-fg: #ffffff;
+    --good: #4cbb6c;
+    --bad: #ec6b6a;
+    --warn: #e0a53a;
+    --series-1: #3987e5;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
+  --color-good: var(--good);
+  --color-bad: var(--bad);
+  --color-warn: var(--warn);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+.chat-markdown > * + * {
+  margin-top: 0.5rem;
+}
+.chat-markdown ul {
+  list-style: disc;
+  padding-left: 1.25rem;
+}
+.chat-markdown ol {
+  list-style: decimal;
+  padding-left: 1.25rem;
+}
+.chat-markdown li + li {
+  margin-top: 0.15rem;
+}
+.chat-markdown strong {
+  font-weight: 600;
+}
+.chat-markdown h1,
+.chat-markdown h2,
+.chat-markdown h3 {
+  font-weight: 600;
+}
+.chat-markdown code {
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 0.85em;
+  background: var(--surface-2);
+  border-radius: 0.35rem;
+  padding: 0.1rem 0.3rem;
+}
+.chat-markdown table {
+  border-collapse: collapse;
+  font-size: 0.85em;
+}
+.chat-markdown th,
+.chat-markdown td {
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  text-align: left;
+}
