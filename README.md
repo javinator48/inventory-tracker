@@ -15,7 +15,9 @@ A self-hosted web app for keeping track of everything you own, what you're selli
 
 ## Features
 
-- **Owned, For sale and Sold tabs**, with search and a category filter. Move an item from Owned to For sale to Sold, recording its asking price and then its sale price, date and platform.
+- **Owned, For sale, Sold and Wishlist tabs**, with search and a category filter. Move an item from Owned to For sale to Sold, recording its asking price and then its sale price, date and platform. Sell some units of an item and keep the rest.
+- **Before you buy:** check a possible purchase against everything you own, using ideas from Marie Kondo's KonMari method. See the [example below](#before-you-buy-an-example).
+- **Does it spark joy?** Rate what you own as sparking joy, neutral, or not. The ratings feed the "Before you buy" check, and the Stats tab lists items you might let go.
 - **Barcode scanning** with the phone camera. Lookups use [UPCitemdb](https://www.upcitemdb.com/) for the name, description, MSRP and images. If a barcode isn't there, the app falls back to a Claude web search.
 - **Snap a photo and identify:** Claude recognizes the product, then searches the web for its MSRP, typical used price, and product images.
 - **Photos** from the camera, from a file, or from the web. Web images are downloaded and stored locally, and the app only offers image links it has checked will load.
@@ -24,11 +26,41 @@ A self-hosted web app for keeping track of everything you own, what you're selli
   - total estimated value, value listed for sale, and cost basis;
   - unrealized gain, and realized profit on sold items;
   - value by category and the most valuable items.
-- **Inventory assistant:** a streaming chat panel docked at the bottom. It can search your inventory and the web, for questions like *"what should I sell next?"* or *"how much are my electronics worth?"*.
+- **Inventory assistant:** a streaming chat panel docked at the bottom. It can search your inventory and the web, for questions like *"what should I sell next?"* or *"I'm thinking of buying a new watch"*. It can also add items with photos, and suggest edits that you confirm with an **Apply** button.
 - **Installable on your phone** ("Add to Home Screen"), with a layout designed for phones first and a dark mode.
 - **Optional password protection** for when the app is reachable from other devices.
 
 ![Stats on desktop](docs/screenshots/desktop-stats.png)
+
+## Before you buy: an example
+
+The goal is for everything you bring home to be something you'll love, not a near-copy of something you already have. Tap **Before you buy**, then type a name, scan a barcode, or snap a photo. Claude compares the item with your inventory and gives you:
+
+- a verdict: **Go for it**, **Wait a little**, or **You're covered**;
+- the things you already own that overlap with it;
+- anything you own that doesn't spark joy and that it could replace;
+- a few questions to ask yourself.
+
+From there, you can put it on your **wishlist** with a cooling-off period of 3 days, 1 week or 1 month. Wishlist items don't count toward your totals, and each one keeps its verdict. When the wait is over, tap **Bought it** or **Let it go**.
+
+In this example, the sample inventory includes a Fujifilm X100V marked ✨ *sparks joy*, and the check is for a **Fujifilm X-T50 with the 15-45mm kit lens, for $1,099**:
+
+<p align="center">
+  <img src="docs/screenshots/mobile-before-you-buy.png" width="36%" alt="Before you buy verdict: Wait a little, with the Fujifilm X100V listed as something you already own" />
+  <img src="docs/screenshots/mobile-before-you-buy-questions.png" width="36%" alt="Reflection questions for the Fujifilm X-T50" />
+</p>
+
+> **Wait a little.** You already own a Fujifilm you love. Be sure this one adds something it can't do.
+>
+> **You already own:** Fujifilm X100V ✨ (*similar*: the same everyday-camera role; the difference is a fixed lens versus interchangeable ones)
+>
+> **Ask yourself:**
+> - Which photos have I actually missed because the X100V's fixed 23mm couldn't get them?
+> - If I had both, which one would I grab on the way out the door, honestly?
+> - Am I drawn to the X-T50 itself, or to the idea of owning more lenses someday?
+> - Would renting or borrowing a zoom for a weekend tell me what I need to know before spending $1,099?
+
+The same check runs in the chat. Tell the assistant *"I'm thinking of buying…"*, and it can add the item to your wishlist for you. The guidance paraphrases Marie Kondo's *The Life-Changing Magic of Tidying Up* (see `lib/ai/konmari.ts`). Verdicts are written by Claude and vary from run to run.
 
 ## Tech stack
 
@@ -88,13 +120,14 @@ Each item counts at its **estimated value**, falling back to its **MSRP** and th
 
 | Path | Contents |
 |---|---|
-| `app/api/` | Route handlers: items, images, barcode lookup, identify, reprice, stats, chat, login |
+| `app/api/` | Route handlers: items, images, selling, barcode lookup, identify, reprice, buy check, stats, chat, login |
 | `components/` | UI: inventory grid, add-item flow, barcode scanner, item details, stats, chat dock |
 | `db/schema.ts`, `db/migrations/` | Database schema. After changing the schema, run `npm run db:generate`. |
 | `lib/items.ts` | Item queries and the stats calculations |
 | `lib/barcode.ts` | UPCitemdb lookup |
 | `lib/ai/identify.ts` | Product identification and value estimates (Claude with web search) |
-| `lib/ai/assistant.ts` | The chat assistant: inventory tools and web search |
+| `lib/ai/assistant.ts` | The chat assistant: inventory tools, photos, edit proposals, purchase checks and web search |
+| `lib/ai/buy-check.ts`, `lib/ai/konmari.ts` | The "Before you buy" check and the KonMari guidance it uses |
 | `lib/images.ts` | Checks that suggested image URLs actually load |
 | `proxy.ts` | The optional password gate |
 
