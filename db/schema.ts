@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { integer, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import type { ItemProposal } from "@/lib/types";
 
 export const ITEM_STATUSES = ["owned", "for_sale", "sold"] as const;
 export type ItemStatus = (typeof ITEM_STATUSES)[number];
@@ -51,6 +52,8 @@ export const chatMessages = sqliteTable("chat_messages", {
   role: text("role", { enum: ["user", "assistant"] }).notNull(),
   // Plain text for display; the assistant's tool calls aren't persisted.
   content: text("content").notNull(),
+  /** Edit cards the assistant showed with this reply, so they survive a reload. */
+  proposals: text("proposals", { mode: "json" }).$type<ItemProposal[]>(),
   createdAt: text("created_at").notNull().default(sql`(CURRENT_TIMESTAMP)`),
 });
 
