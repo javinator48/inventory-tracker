@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Check, ChevronDown, ImagePlus, SendHorizontal, Trash2, X } from "lucide-react";
+import { Bot, Camera, Check, ChevronDown, ImagePlus, SendHorizontal, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import Markdown from "react-markdown";
 import { api, jsonBody, money, resizeImage } from "@/lib/client";
@@ -32,6 +32,8 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
   const [loaded, setLoaded] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  // Separate input with `capture`: Android's photo picker (used for plain accept="image/*") has no camera option.
+  const cameraInput = useRef<HTMLInputElement>(null);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [zoom, setZoom] = useState<string | null>(null);
 
@@ -61,6 +63,11 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
     const picked = [...(files ?? [])].slice(0, room);
     const resized = await Promise.all(picked.map((f) => resizeImage(f)));
     setAttachments((a) => [...a, ...resized.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+  };
+
+  const onPhotosPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    void attach(e.target.files);
+    e.target.value = "";
   };
 
   const removeAttachment = (index: number) =>
@@ -259,17 +266,8 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
             ))}
           </div>
         )}
-        <input
-          ref={photoInput}
-          type="file"
-          accept="image/*"
-          multiple
-          className="hidden"
-          onChange={(e) => {
-            void attach(e.target.files);
-            e.target.value = "";
-          }}
-        />
+        <input ref={photoInput} type="file" accept="image/*" multiple className="hidden" onChange={onPhotosPicked} />
+        <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotosPicked} />
         <form
           className={cn("flex items-center gap-2 p-2", open && attachments.length === 0 && "border-t border-border")}
           onSubmit={(e) => {
@@ -279,15 +277,26 @@ export function ChatDock({ onItemSaved }: { onItemSaved?: (item: ItemWithImages)
         >
           {!open && <Bot size={20} className="ml-2 shrink-0 text-accent" />}
           {open && (
-            <button
-              type="button"
-              onClick={() => photoInput.current?.click()}
-              disabled={streaming || attachments.length >= MAX_ATTACHMENTS}
-              className="rounded-full p-2 text-muted hover:bg-surface-2 disabled:opacity-40"
-              aria-label="Attach a photo"
-            >
-              <ImagePlus size={20} />
-            </button>
+            <>
+              <button
+                type="button"
+                onClick={() => cameraInput.current?.click()}
+                disabled={streaming || attachments.length >= MAX_ATTACHMENTS}
+                className="rounded-full p-2 text-muted hover:bg-surface-2 disabled:opacity-40"
+                aria-label="Take a photo"
+              >
+                <Camera size={20} />
+              </button>
+              <button
+                type="button"
+                onClick={() => photoInput.current?.click()}
+                disabled={streaming || attachments.length >= MAX_ATTACHMENTS}
+                className="-ml-2 rounded-full p-2 text-muted hover:bg-surface-2 disabled:opacity-40"
+                aria-label="Attach a photo"
+              >
+                <ImagePlus size={20} />
+              </button>
+            </>
           )}
           <input
             value={input}

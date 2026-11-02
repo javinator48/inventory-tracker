@@ -43,3 +43,10 @@ next-env.d.ts
 
 # local data
 /data
+
+# demo build output (scripts/build-demo.mjs) and local demo builds
+/demo/inventory.db
+/.next-demo/
+
+# python bytecode
+__pycache__/

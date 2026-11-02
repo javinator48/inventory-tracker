@@ -1,6 +1,6 @@
 "use client";
 
-import { BadgeDollarSign, Check, HeartOff, ImagePlus, Pencil, RefreshCw, Star, Tag, Trash2, Undo2 } from "lucide-react";
+import { BadgeDollarSign, Camera, Check, HeartOff, ImagePlus, Pencil, RefreshCw, Star, Tag, Trash2, Undo2 } from "lucide-react";
 import { useRef, useState } from "react";
 import type { ItemWithImages } from "@/db/schema";
 import { api, jsonBody, money, resizeImage, signedMoney } from "@/lib/client";
@@ -40,6 +40,8 @@ export function ItemDetailSheet({
   const [sale, setSale] = useState({ quantity: "", price: "", date: "", platform: "" });
   const [bought, setBought] = useState({ price: "", date: "" });
   const photoInput = useRef<HTMLInputElement>(null);
+  // Separate input with `capture`: Android's photo picker (used for plain accept="image/*") has no camera option.
+  const cameraInput = useRef<HTMLInputElement>(null);
 
   if (!item) return null;
 
@@ -118,16 +120,125 @@ export function ItemDetailSheet({
       const form = new FormData();
       form.set("file", await resizeImage(file));
       form.set("source", "upload");
-      await api(`/api/items/${item.id}/images`, { method: "POST", body: form });
-      await refresh();
-      setImageIndex(item.images.length);
+      const added = await api<{ id: number }>(`/api/items/${item.id}/images`, { method: "POST", body: form });
+      const saved = await api<ItemWithImages>(`/api/items/${item.id}`);
+      onChanged(saved);
+      // Images are listed cover-first, so a new photo that became the cover isn't at the end.
+      setImageIndex(Math.max(0, saved.images.findIndex((img) => img.id === added.id)));
     });
+
+  const onPhotoPicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) void uploadPhoto(file);
+  };
 
   const image = item.images[Math.min(imageIndex, item.images.length - 1)];
   const value = item.estimatedValue ?? item.msrp ?? item.purchasePrice;
   const gain = item.purchasePrice != null && value != null ? (value - item.purchasePrice) * item.quantity : null;
   const soldProfit =
     item.soldPrice != null && item.purchasePrice != null ? (item.soldPrice - item.purchasePrice) * item.quantity : null;
+
+  const photos = (
+    <div className="flex flex-col gap-2">
+      <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-2">
+        {image ? (
+          <img src={`/api/images/${image.path}`} alt={item.name} className="size-full object-contain" />
+        ) : (
+          <div className="flex size-full divide-x divide-border">
+            <button
+              onClick={() => cameraInput.current?.click()}
+              className="flex flex-1 flex-col items-center justify-center gap-2 text-muted hover:bg-surface"
+            >
+              <Camera size={28} />
+              <span className="text-sm">Take a photo</span>
+            </button>
+            <button
+              onClick={() => photoInput.current?.click()}
+              className="flex flex-1 flex-col items-center justify-center gap-2 text-muted hover:bg-surface"
+            >
+              <ImagePlus size={28} />
+              <span className="text-sm">Choose a photo</span>
+            </button>
+          </div>
+        )}
+        {busy === "photo" && (
+          <div className="absolute inset-0 flex items-center justify-center bg-black/30">
+            <Spinner className="size-6 text-white" />
+          </div>
+        )}
+      </div>
+      {item.images.length > 0 && (
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {item.images.map((img, i) => (
+            <button
+              key={img.id}
+              onClick={() => setImageIndex(i)}
+              className={cn(
+                "relative size-14 shrink-0 overflow-hidden rounded-lg border-2",
+                img.id === image?.id ? "border-accent" : "border-transparent",
+              )}
+            >
+              <img src={`/api/images/${img.path}`} alt="" className="size-full object-cover" />
+              {img.isPrimary && (
+                <span className="absolute bottom-0.5 left-0.5 rounded-full bg-black/60 p-0.5 text-white">
+                  <Star size={9} fill="currentColor" />
+                </span>
+              )}
+            </button>
+          ))}
+          <button
+            onClick={() => cameraInput.current?.click()}
+            className="flex size-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-muted"
+            aria-label="Take photo"
+          >
+            <Camera size={18} />
+          </button>
+          <button
+            onClick={() => photoInput.current?.click()}
+            className="flex size-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-muted"
+            aria-label="Choose photo"
+          >
+            <ImagePlus size={18} />
+          </button>
+          {image && (
+            <div className="ml-auto flex gap-1">
+              {!image.isPrimary && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  aria-label="Use as cover photo"
+                  onClick={() =>
+                    run("photo", async () => {
+                      await api(`/api/items/${item.id}/images`, jsonBody({ imageId: image.id }, "PATCH"));
+                      await refresh();
+                    })
+                  }
+                >
+                  <Star size={16} />
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                aria-label="Delete photo"
+                onClick={() =>
+                  confirm("Delete this photo?") &&
+                  run("photo", async () => {
+                    await api(`/api/items/${item.id}/images?imageId=${image.id}`, { method: "DELETE" });
+                    setImageIndex(0);
+                    await refresh();
+                  })
+                }
+              >
+                <Trash2 size={16} />
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
 
   const footer =
     mode === "edit" ? (
@@ -259,22 +370,16 @@ export function ItemDetailSheet({
 
   return (
     <Sheet open onClose={onClose} title={item.name} footer={footer}>
-      <input
-        ref={photoInput}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (file) void uploadPhoto(file);
-        }}
-      />
+      <input ref={photoInput} type="file" accept="image/*" className="hidden" onChange={onPhotoPicked} />
+      <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotoPicked} />
       <div className="flex flex-col gap-4">
         {error && <ErrorNote>{error}</ErrorNote>}
 
         {mode === "edit" && values && (
-          <ItemForm values={values} onChange={setValues} status={item.status} categories={categories} />
+          <>
+            {photos}
+            <ItemForm values={values} onChange={setValues} status={item.status} categories={categories} />
+          </>
         )}
 
         {mode === "list" && (
@@ -359,88 +464,7 @@ export function ItemDetailSheet({
 
         {mode === "view" && (
           <>
-            <div className="flex flex-col gap-2">
-              <div className="relative aspect-[4/3] overflow-hidden rounded-2xl bg-surface-2">
-                {image ? (
-                  <img src={`/api/images/${image.path}`} alt={item.name} className="size-full object-contain" />
-                ) : (
-                  <button
-                    onClick={() => photoInput.current?.click()}
-                    className="flex size-full flex-col items-center justify-center gap-2 text-muted"
-                  >
-                    <ImagePlus size={28} />
-                    <span className="text-sm">Add a photo</span>
-                  </button>
-                )}
-                {busy === "photo" && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                    <Spinner className="size-6 text-white" />
-                  </div>
-                )}
-              </div>
-              {item.images.length > 0 && (
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
-                  {item.images.map((img, i) => (
-                    <button
-                      key={img.id}
-                      onClick={() => setImageIndex(i)}
-                      className={cn(
-                        "relative size-14 shrink-0 overflow-hidden rounded-lg border-2",
-                        img.id === image?.id ? "border-accent" : "border-transparent",
-                      )}
-                    >
-                      <img src={`/api/images/${img.path}`} alt="" className="size-full object-cover" />
-                      {img.isPrimary && (
-                        <span className="absolute bottom-0.5 left-0.5 rounded-full bg-black/60 p-0.5 text-white">
-                          <Star size={9} fill="currentColor" />
-                        </span>
-                      )}
-                    </button>
-                  ))}
-                  <button
-                    onClick={() => photoInput.current?.click()}
-                    className="flex size-14 shrink-0 items-center justify-center rounded-lg border border-dashed border-border text-muted"
-                    aria-label="Add photo"
-                  >
-                    <ImagePlus size={18} />
-                  </button>
-                  {image && (
-                    <div className="ml-auto flex gap-1">
-                      {!image.isPrimary && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          aria-label="Use as cover photo"
-                          onClick={() =>
-                            run("photo", async () => {
-                              await api(`/api/items/${item.id}/images`, jsonBody({ imageId: image.id }, "PATCH"));
-                              await refresh();
-                            })
-                          }
-                        >
-                          <Star size={16} />
-                        </Button>
-                      )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        aria-label="Delete photo"
-                        onClick={() =>
-                          confirm("Delete this photo?") &&
-                          run("photo", async () => {
-                            await api(`/api/items/${item.id}/images?imageId=${image.id}`, { method: "DELETE" });
-                            setImageIndex(0);
-                            await refresh();
-                          })
-                        }
-                      >
-                        <Trash2 size={16} />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            {photos}
 
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge status={item.status} />
