@@ -1,4 +1,5 @@
 import "server-only";
+import { safeFetch } from "@/lib/safe-fetch";
 
 // Claude's web search returns pages, not image files, so image URLs it proposes are
 // sometimes guesses. Only offer images that verifiably load, and add the preview image
@@ -11,7 +12,7 @@ const BROWSER_HEADERS = {
 
 async function isLoadableImage(url: string) {
   try {
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: { ...BROWSER_HEADERS, Accept: "image/avif,image/webp,image/png,image/jpeg,image/*;q=0.8" },
       signal: AbortSignal.timeout(6_000),
     });
@@ -28,7 +29,7 @@ const CONTENT = /content=["']([^"']+)["']/i;
 
 async function pagePreviewImages(pageUrl: string): Promise<string[]> {
   try {
-    const res = await fetch(pageUrl, {
+    const res = await safeFetch(pageUrl, {
       headers: { ...BROWSER_HEADERS, Accept: "text/html" },
       signal: AbortSignal.timeout(6_000),
     });

@@ -40,7 +40,9 @@ export function OutfitSheet({
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const meInput = useRef<HTMLInputElement>(null);
+  const meCameraInput = useRef<HTMLInputElement>(null);
   const pieceInput = useRef<HTMLInputElement>(null);
+  const pieceCameraInput = useRef<HTMLInputElement>(null);
   const [zoom, setZoom] = useState<string | null>(null);
 
   useEffect(() => {
@@ -85,6 +87,16 @@ export function OutfitSheet({
     const preview = URL.createObjectURL(small);
     previews.current.push(preview);
     setPieces((p) => [...p, { id: crypto.randomUUID(), file: small, preview, name: "", key: null }]);
+  };
+
+  const onMePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    void setMePhoto(e.target.files?.[0]);
+    e.target.value = "";
+  };
+
+  const onPiecePicked =(e: React.ChangeEvent<HTMLInputElement>) => {
+    void addPhotoPiece(e.target.files?.[0]);
+    e.target.value = "";
   };
 
   const addNamedPiece = () => {
@@ -181,27 +193,11 @@ export function OutfitSheet({
         ) : undefined
       }
     >
-      <input
-        ref={meInput}
-        type="file"
-        accept="image/*"
-        capture="user"
-        className="hidden"
-        onChange={(e) => {
-          void setMePhoto(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
-      <input
-        ref={pieceInput}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={(e) => {
-          void addPhotoPiece(e.target.files?.[0]);
-          e.target.value = "";
-        }}
-      />
+      {/* Separate camera inputs: Android's photo picker (plain accept="image/*") has no camera option. */}
+      <input ref={meInput} type="file" accept="image/*" className="hidden" onChange={onMePicked} />
+      <input ref={meCameraInput} type="file" accept="image/*" capture="user" className="hidden" onChange={onMePicked} />
+      <input ref={pieceInput} type="file" accept="image/*" className="hidden" onChange={onPiecePicked} />
+      <input ref={pieceCameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPiecePicked} />
 
       {step === "setup" && (
         <div className="flex flex-col gap-5">
@@ -223,9 +219,12 @@ export function OutfitSheet({
                     ? "Used for every try-on. It's sent to Google Gemini only when you ask to see an outfit on you."
                     : "A full-length photo works best: standing, facing the camera, in good light."}
                 </p>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => meCameraInput.current?.click()} disabled={busy === "me"}>
+                    {busy === "me" ? <Spinner /> : <Camera size={15} />} Take a photo
+                  </Button>
                   <Button size="sm" onClick={() => meInput.current?.click()} disabled={busy === "me"}>
-                    {busy === "me" ? <Spinner /> : <Camera size={15} />} {meKey ? "Replace" : "Add your photo"}
+                    <ImagePlus size={15} /> Choose a photo
                   </Button>
                   {meKey && (
                     <Button size="sm" variant="ghost" onClick={removeMePhoto} aria-label="Delete your photo" disabled={busy === "me"}>
@@ -271,9 +270,14 @@ export function OutfitSheet({
             )}
             {pieces.length < MAX_PIECES && (
               <div className="flex flex-col gap-2">
-                <Button onClick={() => pieceInput.current?.click()}>
-                  <ImagePlus size={16} /> Add a photo of it
-                </Button>
+                <div className="flex gap-2">
+                  <Button className="flex-1" onClick={() => pieceCameraInput.current?.click()}>
+                    <Camera size={16} /> Take a photo of it
+                  </Button>
+                  <Button className="flex-1" onClick={() => pieceInput.current?.click()}>
+                    <ImagePlus size={16} /> Choose a photo
+                  </Button>
+                </div>
                 <form
                   className="flex gap-2"
                   onSubmit={(e) => {

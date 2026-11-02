@@ -1,0 +1,11 @@
+# Never ship real data or keys into the demo image.
+.env*
+!.env.example
+/data
+.git
+/node_modules
+/.next
+/.next-demo
+/demo/inventory.db
+*.tsbuildinfo
+docs/screenshots

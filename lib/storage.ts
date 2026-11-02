@@ -2,11 +2,14 @@ import "server-only";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { demoSessionId, demoUploadPrefix, UPLOAD_ROOT } from "@/lib/demo";
+import { DEMO } from "@/lib/demo-shared";
+import { safeFetch } from "@/lib/safe-fetch";
 
 // Images are stored under UPLOAD_DIR and served by /api/images/[...path].
 // Swap this module for an S3/R2 implementation when moving to the cloud.
 
-const UPLOAD_DIR = path.resolve(/*turbopackIgnore: true*/ process.env.UPLOAD_DIR ?? "./data/uploads");
+const UPLOAD_DIR = UPLOAD_ROOT;
 
 const EXT_BY_TYPE: Record<string, string> = {
   "image/jpeg": "jpg",
@@ -30,7 +33,9 @@ export function isSupportedImageType(type: string) {
 export async function saveImage(data: Buffer, contentType: string): Promise<string> {
   const ext = EXT_BY_TYPE[contentType];
   if (!ext) throw new Error(`Unsupported image type: ${contentType}`);
-  const key = `${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
+  // In the demo, a visitor's uploads live under their sandbox's prefix so they're removed with it.
+  const prefix = DEMO ? demoUploadPrefix(await demoSessionId()) : "";
+  const key = `${prefix}${new Date().toISOString().slice(0, 7)}/${crypto.randomUUID()}.${ext}`;
   const file = path.join(UPLOAD_DIR, key);
   await fs.mkdir(path.dirname(file), { recursive: true });
   await fs.writeFile(file, data);
@@ -50,6 +55,8 @@ export async function readImage(key: string) {
 }
 
 export async function deleteImage(key: string) {
+  // Demo images are shared by every sandbox; a visitor may only delete their own uploads.
+  if (DEMO && !key.startsWith(demoUploadPrefix(await demoSessionId()))) return;
   await fs.rm(resolveKey(key), { force: true });
 }
 
@@ -65,10 +72,9 @@ export async function downloadImage(url: string): Promise<{ data: Buffer; conten
   if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
     throw new Error("Only http(s) image URLs are supported");
   }
-  const res = await fetch(parsed, {
+  const res = await safeFetch(parsed, {
     headers: { "User-Agent": "Mozilla/5.0 (inventory-tracker image fetch)" },
     signal: AbortSignal.timeout(15_000),
-    redirect: "follow",
   });
   if (!res.ok) throw new Error(`Image download failed (${res.status})`);
   const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim();

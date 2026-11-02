@@ -180,14 +180,16 @@ export async function deleteItem(id: number) {
 
 export async function addImage(itemId: number, path: string, source: "camera" | "upload" | "web" | "barcode") {
   const db = await getDb();
-  const [{ count }] = await db
-    .select({ count: sql<number>`count(*)` })
+  const [cover] = await db
+    .select()
     .from(itemImages)
-    .where(eq(itemImages.itemId, itemId));
-  const [row] = await db
-    .insert(itemImages)
-    .values({ itemId, path, source, isPrimary: count === 0 })
-    .returning();
+    .where(and(eq(itemImages.itemId, itemId), eq(itemImages.isPrimary, true)))
+    .limit(1);
+  // The user's own photo replaces a web/barcode stock image as the cover; otherwise only the first image is the cover.
+  const ownPhoto = source === "camera" || source === "upload";
+  const isPrimary = !cover || (ownPhoto && (cover.source === "web" || cover.source === "barcode"));
+  if (cover && isPrimary) await db.update(itemImages).set({ isPrimary: false }).where(eq(itemImages.id, cover.id));
+  const [row] = await db.insert(itemImages).values({ itemId, path, source, isPrimary }).returning();
   await db.update(items).set({ updatedAt: now() }).where(eq(items.id, itemId));
   return row;
 }

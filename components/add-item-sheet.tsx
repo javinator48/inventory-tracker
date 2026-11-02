@@ -35,6 +35,8 @@ export function AddItemSheet({
   const [saving, setSaving] = useState(false);
   const identifyInput = useRef<HTMLInputElement>(null);
   const photoInput = useRef<HTMLInputElement>(null);
+  // Separate input with `capture`: Android's photo picker (used for plain accept="image/*") has no camera option.
+  const cameraInput = useRef<HTMLInputElement>(null);
 
   const photoUrl = useMemo(() => (photo ? URL.createObjectURL(photo) : null), [photo]);
   useEffect(() => () => void (photoUrl && URL.revokeObjectURL(photoUrl)), [photoUrl]);
@@ -87,6 +89,12 @@ export function AddItemSheet({
     const small = await resizeImage(file);
     setPhoto(small);
     await identify({ image: small });
+  };
+
+  const onPhotoPicked = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (file) setPhoto(await resizeImage(file));
   };
 
   const save = async () => {
@@ -149,17 +157,8 @@ export function AddItemSheet({
           e.target.value = "";
         }}
       />
-      <input
-        ref={photoInput}
-        type="file"
-        accept="image/*"
-        className="hidden"
-        onChange={async (e) => {
-          const file = e.target.files?.[0];
-          e.target.value = "";
-          if (file) setPhoto(await resizeImage(file));
-        }}
-      />
+      <input ref={photoInput} type="file" accept="image/*" className="hidden" onChange={onPhotoPicked} />
+      <input ref={cameraInput} type="file" accept="image/*" capture="environment" className="hidden" onChange={onPhotoPicked} />
 
       {step === "choose" && (
         <div className="flex flex-col gap-3">
@@ -233,11 +232,18 @@ export function AddItemSheet({
                 />
               ))}
               <button
+                onClick={() => cameraInput.current?.click()}
+                className="flex size-20 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-muted hover:bg-surface-2"
+              >
+                <Camera size={20} />
+                <span className="text-[10px]">Take photo</span>
+              </button>
+              <button
                 onClick={() => photoInput.current?.click()}
                 className="flex size-20 shrink-0 flex-col items-center justify-center gap-1 rounded-xl border border-dashed border-border text-muted hover:bg-surface-2"
               >
                 <ImagePlus size={20} />
-                <span className="text-[10px]">{photo ? "Replace" : "Add photo"}</span>
+                <span className="text-[10px]">{photo ? "Replace" : "Choose photo"}</span>
               </button>
             </div>
             <div className="flex flex-wrap gap-2">
